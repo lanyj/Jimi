@@ -1,0 +1,33 @@
+{
+  "default_model": "qwen-max",
+  "providers": {
+    "qwen": {
+      "type": "qwen",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "",
+      "custom_headers": {}
+    },
+    "ollama": {
+      "type": "ollama",
+      "base_url": "http://localhost:11434",
+      "api_key": "",
+      "custom_headers": {}
+    }
+  },
+  "models": {
+    "qwen-max": {
+      "provider": "qwen",
+      "model": "qwen-max",
+      "max_context_size": 32000
+    },
+    "qwen2.5-coder:32b": {
+      "provider": "ollama",
+      "model": "qwen2.5-coder:32b",
+      "max_context_size": 32768
+    }
+  },
+  "loop_control": {
+    "max_steps_per_run": 10,
+    "max_retries_per_step": 3
+  }
+}
