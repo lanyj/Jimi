@@ -53,13 +53,7 @@ public class JimiConfig {
     @Valid
     @Builder.Default
     private LoopControlConfig loopControl = new LoopControlConfig();
-    
-    // TODO: 服务配置待实现
-    // @JsonProperty("services")
-    // @NotNull
-    // @Valid
-    // @Builder.Default
-    // private ServicesConfig services = new ServicesConfig();
+
     
     /**
      * 验证配置的一致性
