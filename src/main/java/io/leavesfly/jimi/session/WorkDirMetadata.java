@@ -20,32 +20,32 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkDirMetadata {
-    
+
     /**
      * 工作目录路径
      */
     @JsonProperty("path")
     private String path;
-    
+
     /**
      * 最后使用的会话 ID
      */
     @JsonProperty("last_session_id")
     private String lastSessionId;
-    
+
     /**
      * 历史会话 ID 列表
      */
     @JsonProperty("session_ids")
     @Builder.Default
     private List<String> sessionIds = new ArrayList<>();
-    
+
     /**
      * 获取会话存储目录
      */
     public Path getSessionsDir() {
         // 使用工作目录路径的哈希值作为子目录名
         String dirHash = Integer.toHexString(path.hashCode());
-        return Paths.get(System.getProperty("user.home"), ".kimi-cli", "sessions", dirHash);
+        return Paths.get(System.getProperty("user.home"), ".jimi", "sessions", dirHash);
     }
 }
