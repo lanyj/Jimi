@@ -7,23 +7,27 @@ import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.config.LLMModelConfig;
 import io.leavesfly.jimi.config.LLMProviderConfig;
 import io.leavesfly.jimi.exception.ConfigException;
-import io.leavesfly.jimi.llm.ChatProvider;
 import io.leavesfly.jimi.llm.LLM;
-import io.leavesfly.jimi.llm.provider.KimiChatProvider;
-import io.leavesfly.jimi.llm.provider.OpenAICompatibleChatProvider;
+import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.session.Session;
+import io.leavesfly.jimi.session.SessionManager;
 import io.leavesfly.jimi.soul.JimiSoul;
 import io.leavesfly.jimi.agent.Agent;
 import io.leavesfly.jimi.soul.approval.Approval;
+import io.leavesfly.jimi.soul.compaction.Compaction;
 import io.leavesfly.jimi.soul.Context;
 
 import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.soul.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
+import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.tool.task.Task;
 import io.leavesfly.jimi.tool.mcp.MCPToolLoader;
 import io.leavesfly.jimi.tool.mcp.MCPTool;
+import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -35,18 +39,35 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Jimi 应用工厂
+ * Jimi 应用工厂（Spring Service）
  * 负责组装所有核心组件，创建完整的 Jimi 实例
  */
 @Slf4j
+@Service
 public class JimiFactory {
 
     private final JimiConfig config;
     private final ObjectMapper objectMapper;
+    private final AgentRegistry agentRegistry;
+    private final ToolRegistryFactory toolRegistryFactory;
+    private final LLMFactory llmFactory;
+    private final MCPToolLoader mcpToolLoader;
+    private final SessionManager sessionManager;
+    private final Compaction compaction;
 
-    public JimiFactory(JimiConfig config, ObjectMapper objectMapper) {
+    @Autowired
+    public JimiFactory(JimiConfig config, ObjectMapper objectMapper, 
+                      AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
+                      LLMFactory llmFactory, MCPToolLoader mcpToolLoader,
+                      SessionManager sessionManager, Compaction compaction) {
         this.config = config;
         this.objectMapper = objectMapper;
+        this.agentRegistry = agentRegistry;
+        this.toolRegistryFactory = toolRegistryFactory;
+        this.llmFactory = llmFactory;
+        this.mcpToolLoader = mcpToolLoader;
+        this.sessionManager = sessionManager;
+        this.compaction = compaction;
     }
 
     /**
@@ -70,8 +91,8 @@ public class JimiFactory {
             try {
                 log.debug("Creating Jimi Soul for session: {}", session.getId());
 
-                // 1. 创建 LLM
-                LLM llm = createLLM(modelName);
+                // 1. 获取或创建 LLM（使用工厂，带缓存）
+                LLM llm = llmFactory.getOrCreateLLM(modelName);
 
                 // 2. 创建 Runtime 依赖
                 Approval approval = new Approval(yolo);
@@ -87,10 +108,9 @@ public class JimiFactory {
                         .build();
 
                 // 3. 加载 Agent 规范和 Agent 实例
-                ResolvedAgentSpec resolvedAgentSpec = loadAgentSpec(agentSpecPath, runtime);
+                ResolvedAgentSpec resolvedAgentSpec = loadAgentSpec(agentSpecPath);
 
                 // 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
-                AgentRegistry agentRegistry = AgentRegistry.getInstance();
                 Agent agent = agentSpecPath != null 
                         ? agentRegistry.loadAgent(agentSpecPath, runtime).block()
                         : agentRegistry.loadDefaultAgent(runtime).block();
@@ -104,8 +124,8 @@ public class JimiFactory {
                 // 5. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
                 ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, resolvedAgentSpec, runtime, mcpConfigFiles);
 
-                // 6. 创建 JimiSoul
-                JimiSoul soul = new JimiSoul(agent, runtime, context, toolRegistry, objectMapper);
+                // 6. 创建 JimiSoul（注入 Compaction）
+                JimiSoul soul = new JimiSoul(agent, runtime, context, toolRegistry, objectMapper, new WireImpl(), compaction);
 
                 // 7. 恢复上下文历史
                 return context.restore()
@@ -119,95 +139,17 @@ public class JimiFactory {
         });
     }
 
-    /**
-     * 创建 LLM 实例
-     */
-    private LLM createLLM(String modelName) {
-        // 确定使用的模型
-        String effectiveModelName = modelName != null ? modelName : config.getDefaultModel();
 
-        if (effectiveModelName == null || effectiveModelName.isEmpty()) {
-            log.warn("No model specified, LLM will not be initialized");
-            return null;
-        }
-
-        LLMModelConfig modelConfig = config.getModels().get(effectiveModelName);
-        if (modelConfig == null) {
-            throw new ConfigException("Model not found in config: " + effectiveModelName);
-        }
-
-        LLMProviderConfig providerConfig = config.getProviders().get(modelConfig.getProvider());
-        if (providerConfig == null) {
-            throw new ConfigException("Provider not found in config: " + modelConfig.getProvider());
-        }
-
-        // 检查环境变量覆盖
-        String apiKey = Optional.ofNullable(System.getenv("KIMI_API_KEY"))
-                .orElse(providerConfig.getApiKey());
-        String baseUrl = Optional.ofNullable(System.getenv("KIMI_BASE_URL"))
-                .orElse(providerConfig.getBaseUrl());
-        String model = Optional.ofNullable(System.getenv("KIMI_MODEL_NAME"))
-                .orElse(modelConfig.getModel());
-
-        if (apiKey == null || apiKey.isEmpty()) {
-            log.warn("No API key configured, LLM will not be initialized");
-            return null;
-        }
-
-        // 创建带环境变量覆盖的 provider config
-        LLMProviderConfig effectiveProviderConfig = LLMProviderConfig.builder()
-                .type(providerConfig.getType())
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .customHeaders(providerConfig.getCustomHeaders())
-                .build();
-
-        // 创建 ChatProvider
-        ChatProvider chatProvider;
-        switch (providerConfig.getType()) {
-            case KIMI:
-                chatProvider = new KimiChatProvider(model, effectiveProviderConfig, objectMapper);
-                break;
-
-            case DEEPSEEK:
-                chatProvider = new OpenAICompatibleChatProvider(
-                        model, effectiveProviderConfig, objectMapper, "DeepSeek");
-                break;
-
-            case QWEN:
-                chatProvider = new OpenAICompatibleChatProvider(
-                        model, effectiveProviderConfig, objectMapper, "Qwen");
-                break;
-
-            case OLLAMA:
-                chatProvider = new OpenAICompatibleChatProvider(
-                        model, effectiveProviderConfig, objectMapper, "Ollama");
-                break;
-
-            case OPENAI:
-                chatProvider = new OpenAICompatibleChatProvider(
-                        model, effectiveProviderConfig, objectMapper, "OpenAI");
-                break;
-
-            default:
-                throw new ConfigException("Unsupported provider type: " + providerConfig.getType());
-        }
-
-        log.info("Created LLM: provider={}, model={}", providerConfig.getType(), model);
-
-        return LLM.builder()
-                .chatProvider(chatProvider)
-                .maxContextSize(modelConfig.getMaxContextSize())
-                .build();
-    }
 
     /**
      * 加载 Agent 规范
+     * 
+     * @param agentSpecPath Agent 规范文件路径（null 表示使用默认 Agent）
+     * @return 已解析的 Agent 规范
      */
-    private ResolvedAgentSpec loadAgentSpec(Path agentSpecPath, Runtime runtime) {
+    private ResolvedAgentSpec loadAgentSpec(Path agentSpecPath) {
         try {
-            // 使用 AgentRegistry 单例加载
-            AgentRegistry agentRegistry = AgentRegistry.getInstance();
+            // 使用 AgentRegistry 加载
             ResolvedAgentSpec resolved = agentSpecPath != null
                     ? agentRegistry.loadAgentSpec(agentSpecPath).block()
                     : agentRegistry.loadDefaultAgentSpec().block();
@@ -235,27 +177,24 @@ public class JimiFactory {
             Runtime runtime,
             List<Path> mcpConfigFiles
     ) {
-        // 创建基础工具注册表
-        ToolRegistry registry = ToolRegistry.createStandardRegistry(
+        // 创建基础工具注册表（使用 Spring 工厂）
+        ToolRegistry registry = toolRegistryFactory.createStandardRegistry(
                 builtinArgs,
-                approval,
-                objectMapper
+                approval
         );
 
-        // 如果 Agent 有子 Agent 规范，注册 Task 工具
+        // 如果 Agent 有子 Agent 规范，注册 Task 工具（使用 Spring 工厂）
         if (resolvedAgentSpec.getSubagents() != null && !resolvedAgentSpec.getSubagents().isEmpty()) {
-            Task taskTool = new Task(resolvedAgentSpec, runtime, objectMapper);
+            Task taskTool = toolRegistryFactory.createTask(resolvedAgentSpec, runtime);
             registry.register(taskTool);
             log.info("Registered Task tool with {} subagents", resolvedAgentSpec.getSubagents().size());
         }
 
-        // 加载 MCP 工具
+        // 加载 MCP 工具（使用 Spring 单例服务）
         if (mcpConfigFiles != null && !mcpConfigFiles.isEmpty()) {
-            MCPToolLoader mcpLoader = new MCPToolLoader(objectMapper);
-
             for (Path configFile : mcpConfigFiles) {
                 try {
-                    List<MCPTool> mcpTools = mcpLoader.loadFromFile(configFile, registry);
+                    List<MCPTool> mcpTools = mcpToolLoader.loadFromFile(configFile, registry);
                     log.info("Loaded {} MCP tools from {}", mcpTools.size(), configFile);
                 } catch (Exception e) {
                     log.error("Failed to load MCP config: {}", configFile, e);
@@ -284,19 +223,8 @@ public class JimiFactory {
         }
         String workDirLs = lsBuilder.toString().trim();
 
-        // 加载 AGENTS.md（如存在）
-        String agentsMd = "";
-        java.nio.file.Path agentsPath = workDir.resolve("AGENTS.md");
-        java.nio.file.Path agentsPathLower = workDir.resolve("agents.md");
-        try {
-            if (java.nio.file.Files.isRegularFile(agentsPath)) {
-                agentsMd = java.nio.file.Files.readString(agentsPath).trim();
-            } else if (java.nio.file.Files.isRegularFile(agentsPathLower)) {
-                agentsMd = java.nio.file.Files.readString(agentsPathLower).trim();
-            }
-        } catch (Exception e) {
-            log.warn("Failed to read AGENTS.md from work dir: {}", workDir, e);
-        }
+        // 从 SessionManager 缓存加载 AGENTS.md（避免重复 I/O）
+        String agentsMd = sessionManager.loadAgentsMd(workDir);
 
         return BuiltinSystemPromptArgs.builder()
                 .kimiNow(now)

@@ -41,14 +41,17 @@ public class CliApplication implements CommandLineRunner {
     private final SessionManager sessionManager;
     private final ObjectMapper objectMapper;
     private final ApplicationContext applicationContext;
+    private final JimiFactory jimiFactory;
 
     @Autowired
     public CliApplication(ConfigLoader configLoader, SessionManager sessionManager,
-                          ObjectMapper objectMapper, ApplicationContext applicationContext) {
+                          ObjectMapper objectMapper, ApplicationContext applicationContext,
+                          JimiFactory jimiFactory) {
         this.configLoader = configLoader;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
         this.applicationContext = applicationContext;
+        this.jimiFactory = jimiFactory;
     }
 
     @Option(names = {"--verbose"}, description = "Print verbose information")
@@ -96,7 +99,8 @@ public class CliApplication implements CommandLineRunner {
 
     private void executeMain() {
         try {
-            // 加载配置
+            // 配置已由 Spring 管理，但这里仍然需要加载以获取最新配置（如果需要）
+            // 或者直接使用注入的 JimiConfig
             JimiConfig config = configLoader.loadConfig(null);
 
             if (verbose) {
@@ -122,9 +126,8 @@ public class CliApplication implements CommandLineRunner {
             System.out.println("✓ Session history file: " + session.getHistoryFile());
             System.out.println("✓ Working directory: " + session.getWorkDir());
 
-            // 创建 Jimi Soul
-            JimiFactory factory = new JimiFactory(config, objectMapper);
-            JimiSoul soul = factory.createSoul(session, agentFile, modelName, yolo, mcpConfigFiles).block();
+            // 使用注入的 JimiFactory 创建 Soul
+            JimiSoul soul = jimiFactory.createSoul(session, agentFile, modelName, yolo, mcpConfigFiles).block();
 
             if (soul == null) {
                 System.err.println("Failed to create Jimi Soul");

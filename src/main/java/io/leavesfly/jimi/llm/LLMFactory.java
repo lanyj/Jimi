@@ -4,83 +4,209 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.config.LLMModelConfig;
 import io.leavesfly.jimi.config.LLMProviderConfig;
+import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.llm.provider.KimiChatProvider;
 import io.leavesfly.jimi.llm.provider.OpenAICompatibleChatProvider;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * LLM 工厂类
- * 根据配置创建 LLM 实例
+ * LLM 工厂服务
+ * 负责创建和缓存 LLM 实例
+ * 
+ * 设计原则：
+ * 1. 初始化阶段验证配置（Fail-fast）
+ * 2. 按模型名称缓存 LLM 实例（避免重复创建）
+ * 3. 支持环境变量覆盖配置
+ * 
+ * @author Jimi Team
  */
 @Slf4j
-@RequiredArgsConstructor
+@Service
 public class LLMFactory {
     
+    private final JimiConfig config;
     private final ObjectMapper objectMapper;
     
     /**
-     * 根据配置创建 LLM
-     * 
-     * @param config 全局配置
-     * @param modelName 模型名称（可选，默认使用配置中的默认模型）
-     * @return LLM 实例
+     * LLM 实例缓存（线程安全）
+     * Key: 模型名称
      */
-    public LLM createLLM(JimiConfig config, String modelName) {
-        String actualModelName = modelName != null ? modelName : config.getDefaultModel();
+    private final Map<String, LLM> llmCache = new ConcurrentHashMap<>();
+    
+    @Autowired
+    public LLMFactory(JimiConfig config, ObjectMapper objectMapper) {
+        this.config = config;
+        this.objectMapper = objectMapper;
         
-        if (actualModelName == null || actualModelName.isEmpty()) {
-            throw new IllegalArgumentException("Model name is required");
+        // 初始化阶段验证配置
+        validateConfiguration();
+    }
+    
+    /**
+     * 验证配置（Fail-fast）
+     * 在应用启动时发现配置错误，而非运行时
+     */
+    private void validateConfiguration() {
+        if (config.getDefaultModel() == null || config.getDefaultModel().isEmpty()) {
+            log.warn("No default model configured");
+            return;
         }
         
-        // 获取模型配置
-        LLMModelConfig modelConfig = config.getModels().get(actualModelName);
+        String defaultModel = config.getDefaultModel();
+        LLMModelConfig modelConfig = config.getModels().get(defaultModel);
+        
         if (modelConfig == null) {
-            throw new IllegalArgumentException("Unknown model: " + actualModelName);
+            log.warn("Default model '{}' not found in configuration", defaultModel);
+            return;
         }
         
-        // 获取提供商配置
         LLMProviderConfig providerConfig = config.getProviders().get(modelConfig.getProvider());
         if (providerConfig == null) {
-            throw new IllegalArgumentException("Unknown provider: " + modelConfig.getProvider());
+            log.warn("Provider '{}' for default model not found in configuration", 
+                    modelConfig.getProvider());
+            return;
         }
+        
+        log.info("LLM configuration validated: defaultModel={}, provider={}", 
+                defaultModel, modelConfig.getProvider());
+    }
+    
+    /**
+     * 获取或创建 LLM 实例
+     * 如果已缓存则返回缓存实例，否则创建新实例并缓存
+     * 
+     * @param modelName 模型名称（null 表示使用默认模型）
+     * @return LLM 实例，如果配置不完整则返回 null
+     */
+    public LLM getOrCreateLLM(String modelName) {
+        // 确定使用的模型
+        String effectiveModelName = modelName != null ? modelName : config.getDefaultModel();
+        
+        if (effectiveModelName == null || effectiveModelName.isEmpty()) {
+            log.warn("No model specified and no default model configured");
+            return null;
+        }
+        
+        // 检查缓存
+        LLM cached = llmCache.get(effectiveModelName);
+        if (cached != null) {
+            log.debug("LLM cache hit: {}", effectiveModelName);
+            return cached;
+        }
+        
+        // 创建新实例
+        LLM llm = createLLM(effectiveModelName);
+        if (llm != null) {
+            llmCache.put(effectiveModelName, llm);
+            log.info("LLM created and cached: {}", effectiveModelName);
+        }
+        
+        return llm;
+    }
+    
+    /**
+     * 创建 LLM 实例
+     */
+    private LLM createLLM(String modelName) {
+        LLMModelConfig modelConfig = config.getModels().get(modelName);
+        if (modelConfig == null) {
+            throw new ConfigException("Model not found in config: " + modelName);
+        }
+        
+        LLMProviderConfig providerConfig = config.getProviders().get(modelConfig.getProvider());
+        if (providerConfig == null) {
+            throw new ConfigException("Provider not found in config: " + modelConfig.getProvider());
+        }
+        
+        // 检查环境变量覆盖
+        String apiKey = Optional.ofNullable(System.getenv("KIMI_API_KEY"))
+                .orElse(providerConfig.getApiKey());
+        String baseUrl = Optional.ofNullable(System.getenv("KIMI_BASE_URL"))
+                .orElse(providerConfig.getBaseUrl());
+        String model = Optional.ofNullable(System.getenv("KIMI_MODEL_NAME"))
+                .orElse(modelConfig.getModel());
+        
+        if (apiKey == null || apiKey.isEmpty()) {
+            log.warn("No API key configured for model: {}", modelName);
+            return null;
+        }
+        
+        // 创建带环境变量覆盖的 provider config
+        LLMProviderConfig effectiveProviderConfig = LLMProviderConfig.builder()
+                .type(providerConfig.getType())
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .customHeaders(providerConfig.getCustomHeaders())
+                .build();
         
         // 创建 ChatProvider
         ChatProvider chatProvider = createChatProvider(
-            modelConfig.getModel(),
-            providerConfig
+                providerConfig.getType(), 
+                model, 
+                effectiveProviderConfig
         );
         
-        // 创建 LLM
+        log.info("Created LLM: provider={}, model={}", providerConfig.getType(), model);
+        
         return LLM.builder()
-            .chatProvider(chatProvider)
-            .maxContextSize(modelConfig.getMaxContextSize())
-            .build();
+                .chatProvider(chatProvider)
+                .maxContextSize(modelConfig.getMaxContextSize())
+                .build();
     }
     
     /**
-     * 创建默认 LLM（使用配置中的默认模型）
-     */
-    public LLM createDefaultLLM(JimiConfig config) {
-        return createLLM(config, null);
-    }
-    
-    /**
-     * 根据提供商配置创建 ChatProvider
+     * 创建 ChatProvider 实例
      */
     private ChatProvider createChatProvider(
-        String modelName,
-        LLMProviderConfig providerConfig
+            LLMProviderConfig.ProviderType type,
+            String model,
+            LLMProviderConfig config
     ) {
-        switch (providerConfig.getType()) {
+        switch (type) {
             case KIMI:
-                return new KimiChatProvider(modelName, providerConfig, objectMapper);
-            case OPENAI_LEGACY:
-                return new OpenAICompatibleChatProvider(modelName, providerConfig, objectMapper, "OpenAI Legacy");
-            case CHAOS:
-                return new OpenAICompatibleChatProvider(modelName, providerConfig, objectMapper, "Chaos");
+                return new KimiChatProvider(model, config, objectMapper);
+                
+            case DEEPSEEK:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "DeepSeek");
+                
+            case QWEN:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "Qwen");
+                
+            case OLLAMA:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "Ollama");
+                
+            case OPENAI:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "OpenAI");
+                
             default:
-                throw new IllegalArgumentException("Unknown provider type: " + providerConfig.getType());
+                throw new ConfigException("Unsupported provider type: " + type);
         }
+    }
+    
+    /**
+     * 清除 LLM 缓存
+     * 用于配置热更新等场景
+     */
+    public void clearCache() {
+        int count = llmCache.size();
+        llmCache.clear();
+        log.info("LLM cache cleared: {} instances removed", count);
+    }
+    
+    /**
+     * 获取缓存统计信息
+     */
+    public String getCacheStats() {
+        return String.format("LLMFactory Cache - Models: %d", llmCache.size());
     }
 }

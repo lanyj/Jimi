@@ -10,8 +10,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 会话管理服务
@@ -23,6 +25,13 @@ public class SessionManager {
     
     private static final String METADATA_FILE = "metadata.json";
     private final ObjectMapper objectMapper;
+    
+    /**
+     * AGENTS.md 内容缓存（按工作目录缓存）
+     * Key: 工作目录绝对路径
+     * Value: AGENTS.md 内容
+     */
+    private final Map<String, String> agentsMdCache = new ConcurrentHashMap<>();
     
     public SessionManager(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -54,6 +63,9 @@ public class SessionManager {
         workDirMeta.setLastSessionId(sessionId);
         workDirMeta.getSessionIds().add(sessionId);
         saveMetadata(metadata);
+        
+        // 预加载 AGENTS.md 到缓存
+        loadAgentsMd(workDir);
         
         return Session.builder()
                      .id(sessionId)
@@ -138,6 +150,59 @@ public class SessionManager {
         return metadata.getWorkDirs().stream()
                       .filter(wd -> wd.getPath().equals(workDirStr))
                       .findFirst();
+    }
+    
+    /**
+     * 加载并缓存 AGENTS.md 内容
+     * 
+     * @param workDir 工作目录
+     * @return AGENTS.md 内容，如果不存在则返回空字符串
+     */
+    public String loadAgentsMd(Path workDir) {
+        String workDirKey = workDir.toAbsolutePath().toString();
+        
+        // 检查缓存
+        return agentsMdCache.computeIfAbsent(workDirKey, key -> {
+            Path agentsPath = workDir.resolve("AGENTS.md");
+            Path agentsPathLower = workDir.resolve("agents.md");
+            
+            try {
+                if (Files.isRegularFile(agentsPath)) {
+                    String content = Files.readString(agentsPath).trim();
+                    log.debug("Loaded and cached AGENTS.md from {}", agentsPath);
+                    return content;
+                } else if (Files.isRegularFile(agentsPathLower)) {
+                    String content = Files.readString(agentsPathLower).trim();
+                    log.debug("Loaded and cached agents.md from {}", agentsPathLower);
+                    return content;
+                }
+            } catch (IOException e) {
+                log.warn("Failed to read AGENTS.md from work dir: {}", workDir, e);
+            }
+            
+            return "";
+        });
+    }
+    
+    /**
+     * 清除 AGENTS.md 缓存
+     * 用于 AGENTS.md 文件更新后重新加载
+     */
+    public void clearAgentsMdCache() {
+        int count = agentsMdCache.size();
+        agentsMdCache.clear();
+        log.info("Cleared AGENTS.md cache: {} entries", count);
+    }
+    
+    /**
+     * 清除指定工作目录的 AGENTS.md 缓存
+     */
+    public void clearAgentsMdCache(Path workDir) {
+        String workDirKey = workDir.toAbsolutePath().toString();
+        String removed = agentsMdCache.remove(workDirKey);
+        if (removed != null) {
+            log.debug("Cleared AGENTS.md cache for {}", workDir);
+        }
     }
     
     /**

@@ -7,6 +7,7 @@ import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import java.util.List;
  * 简单上下文压缩实现
  * 保留最近的N条用户/助手消息，压缩更早的历史
  */
+@Service
 @Slf4j
 public class SimpleCompaction implements Compaction {
     

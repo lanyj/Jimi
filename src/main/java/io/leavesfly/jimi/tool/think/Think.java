@@ -7,13 +7,20 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
  * Think工具
  * 用于记录Agent的思考过程，不产生实际输出
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class Think extends AbstractTool<Think.Params> {
     
     private static final String NAME = "Think";

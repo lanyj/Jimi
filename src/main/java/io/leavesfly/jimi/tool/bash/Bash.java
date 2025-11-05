@@ -9,6 +9,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.io.BufferedReader;
@@ -19,14 +22,18 @@ import java.util.concurrent.TimeUnit;
 /**
  * Bash 工具 - 执行 Shell 命令
  * 支持超时控制和输出流式读取
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class Bash extends AbstractTool<Bash.Params> {
     
     private static final int MAX_TIMEOUT = 5 * 60; // 5分钟
     private static final String RUN_COMMAND_ACTION = "run shell command";
     
-    private final Approval approval;
+    private Approval approval;
     
     /**
      * 参数模型
@@ -48,12 +55,21 @@ public class Bash extends AbstractTool<Bash.Params> {
         private int timeout = 60;
     }
     
-    public Bash(Approval approval) {
+    /**
+     * 默认构造函数（Spring 调用）
+     */
+    public Bash() {
         super(
             "Bash",
             "Execute bash commands with timeout control. Maximum timeout is " + MAX_TIMEOUT + " seconds.",
             Params.class
         );
+    }
+    
+    /**
+     * 设置 Approval（运行时注入）
+     */
+    public void setApproval(Approval approval) {
         this.approval = approval;
     }
     

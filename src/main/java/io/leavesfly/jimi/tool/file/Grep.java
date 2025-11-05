@@ -9,6 +9,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
@@ -26,12 +29,16 @@ import java.util.regex.PatternSyntaxException;
 /**
  * Grep 工具 - 使用正则表达式搜索文件内容
  * 简化实现，使用Java内置的文件遍历和正则表达式
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class Grep extends AbstractTool<Grep.Params> {
     
     private static final int MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-    private final Path workDir;
+    private Path workDir;
     
     /**
      * 参数模型
@@ -81,12 +88,15 @@ public class Grep extends AbstractTool<Grep.Params> {
         private Integer headLimit;
     }
     
-    public Grep(BuiltinSystemPromptArgs builtinArgs) {
+    public Grep() {
         super(
             "Grep",
             "Search for patterns in file contents using regular expressions.",
             Params.class
         );
+    }
+    
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
     }
     

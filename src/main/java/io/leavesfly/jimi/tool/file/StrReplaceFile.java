@@ -9,6 +9,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -19,14 +22,18 @@ import java.util.List;
 /**
  * StrReplaceFile 工具 - 字符串替换文件内容
  * 支持单个或多个替换操作
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
     
     private static final String EDIT_ACTION = "EDIT";
     
-    private final Path workDir;
-    private final Approval approval;
+    private Path workDir;
+    private Approval approval;
     
     /**
      * 编辑操作
@@ -73,13 +80,19 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
         private List<Edit> edits;
     }
     
-    public StrReplaceFile(BuiltinSystemPromptArgs builtinArgs, Approval approval) {
+    public StrReplaceFile() {
         super(
             "StrReplaceFile",
             "Apply string replacements to a file. Supports single or multiple edits.",
             Params.class
         );
+    }
+    
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
+    }
+    
+    public void setApproval(Approval approval) {
         this.approval = approval;
     }
     

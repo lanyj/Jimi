@@ -16,6 +16,7 @@ import io.leavesfly.jimi.soul.runtime.Runtime;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
+import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.soul.approval.ApprovalRequest;
 import lombok.AllArgsConstructor;
@@ -23,6 +24,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
@@ -52,6 +57,8 @@ import java.util.stream.Collectors;
  * @author 山泽
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class Task extends AbstractTool<Task.Params> {
     
     /**
@@ -76,11 +83,20 @@ public class Task extends AbstractTool<Task.Params> {
      */
     private static final int MIN_RESPONSE_LENGTH = 200;
     
-    private final Runtime runtime;
-    private final Session session;
+    private Runtime runtime;
+    private Session session;
+    private ResolvedAgentSpec agentSpec;
+    private String taskDescription;
     private final ObjectMapper objectMapper;
+    private final AgentRegistry agentRegistry;
+    private final ToolRegistryFactory toolRegistryFactory;
     private final Map<String, Agent> subagents;
-    private final Map<String, SubagentSpec> subagentSpecs;
+    private Map<String, SubagentSpec> subagentSpecs;
+    
+    /**
+     * 标记 subagent 是否已加载（懒加载模式）
+     */
+    private volatile boolean subagentsLoaded = false;
     
     /**
      * Task 工具参数
@@ -110,17 +126,37 @@ public class Task extends AbstractTool<Task.Params> {
         private String prompt;
     }
     
-    public Task(ResolvedAgentSpec agentSpec, Runtime runtime, ObjectMapper objectMapper) {
-        super("Task", loadDescription(agentSpec), Params.class);
+    @Autowired
+    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory) {
+        super("Task", "Task tool (description will be set when initialized)", Params.class);
         
+        this.objectMapper = objectMapper;
+        this.agentRegistry = agentRegistry;
+        this.toolRegistryFactory = toolRegistryFactory;
+        this.subagents = new HashMap<>();
+    }
+    
+    /**
+     * 设置运行时参数并初始化工具
+     * 使用懒加载模式，不在 Setter 中执行 I/O 操作
+     */
+    public void setRuntimeParams(ResolvedAgentSpec agentSpec, Runtime runtime) {
+        this.agentSpec = agentSpec;
         this.runtime = runtime;
         this.session = runtime.getSession();
-        this.objectMapper = objectMapper;
-        this.subagents = new HashMap<>();
         this.subagentSpecs = agentSpec.getSubagents();
         
-        // 预加载所有子 Agent（异步）
-        loadSubagents();
+        // 更新工具描述
+        this.taskDescription = loadDescription(agentSpec);
+        
+        // 不在这里加载 subagents，改为懒加载
+        // loadSubagents();
+    }
+    
+    @Override
+    public String getDescription() {
+        // 如果已初始化运行时参数，返回动态生成的描述
+        return taskDescription != null ? taskDescription : super.getDescription();
     }
     
     /**
@@ -146,12 +182,24 @@ public class Task extends AbstractTool<Task.Params> {
     }
     
     /**
-     * 预加载所有子 Agent
+     * 懒加载所有子 Agent（首次调用时执行）
+     * 使用双重检查锁定确保线程安全
+     */
+    private void ensureSubagentsLoaded() {
+        if (!subagentsLoaded) {
+            synchronized (this) {
+                if (!subagentsLoaded) {
+                    loadSubagents();
+                    subagentsLoaded = true;
+                }
+            }
+        }
+    }
+    
+    /**
+     * 加载所有子 Agent（内部方法）
      */
     private void loadSubagents() {
-        // 使用 AgentRegistry 单例
-        AgentRegistry agentRegistry = AgentRegistry.getInstance();
-        
         for (Map.Entry<String, SubagentSpec> entry : subagentSpecs.entrySet()) {
             String name = entry.getKey();
             SubagentSpec spec = entry.getValue();
@@ -159,7 +207,7 @@ public class Task extends AbstractTool<Task.Params> {
             try {
                 log.debug("Loading subagent: {}", name);
                 
-                // 使用 AgentRegistry 加载子 Agent
+                // 使用注入的 AgentRegistry 加载子 Agent
                 Agent agent = agentRegistry.loadSubagent(spec, runtime).block();
                 
                 if (agent != null) {
@@ -175,6 +223,9 @@ public class Task extends AbstractTool<Task.Params> {
     @Override
     public Mono<ToolResult> execute(Params params) {
         log.info("Task tool called: {} -> {}", params.getDescription(), params.getSubagentName());
+        
+        // 懒加载 subagents（首次调用时）
+        ensureSubagentsLoaded();
         
         // 检查子 Agent 是否存在
         if (!subagents.containsKey(params.getSubagentName())) {
@@ -208,11 +259,10 @@ public class Task extends AbstractTool<Task.Params> {
                 // 2. 创建独立的上下文
                 Context subContext = new Context(subHistoryFile, objectMapper);
                 
-                // 3. 创建子 Agent 的工具注册表
-                ToolRegistry subToolRegistry = ToolRegistry.createStandardRegistry(
+                // 3. 创建子 Agent 的工具注册表（使用 ToolRegistryFactory）
+                ToolRegistry subToolRegistry = toolRegistryFactory.createStandardRegistry(
                         runtime.getBuiltinArgs(),
-                        runtime.getApproval(),
-                        objectMapper
+                        runtime.getApproval()
                 );
                 
                 // 4. 创建子 JimiSoul

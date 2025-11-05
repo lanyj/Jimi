@@ -3,6 +3,7 @@ package io.leavesfly.jimi.agent;
 import io.leavesfly.jimi.exception.AgentSpecException;
 import io.leavesfly.jimi.soul.runtime.Runtime;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -14,7 +15,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Agent 注册表（单例模式）
+ * Agent 注册表（Spring Service）
  * 集中管理所有可用的代理（Agents），封装 AgentSpecLoader 的实现细节
  * 
  * 职责：
@@ -23,22 +24,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 管理默认 Agent 和自定义 Agent
  * - 提供 Agent 查询和检索功能
  * 
- * 线程安全：使用双重检查锁定确保单例的线程安全性
+ * 缓存策略说明：
+ * 1. **Agent 无状态设计**：Agent 对象只包含配置数据（name、systemPrompt、tools），不包含运行时状态
+ * 2. **缓存安全性**：由于 Agent 是不可变的配置对象，可以安全地在多个 Runtime 之间共享
+ * 3. **缓存键**：使用 Agent 配置文件的绝对路径作为缓存键
+ * 4. **Runtime 独立性**：虽然 loadAgent() 接受 Runtime 参数（用于系统提示词渲染），
+ *    但 Agent 本身不持有 Runtime 引用，因此缓存的 Agent 可复用
+ * 5. **线程安全**：使用 ConcurrentHashMap 确保多线程环境下的缓存安全
+ * 6. **缓存失效**：提供 reload() 和 clearCache() 方法支持配置热更新
+ * 
+ * 线程安全：由 Spring 管理的单例 Bean，内部使用 ConcurrentHashMap 确保线程安全
  * 
  * @author Jimi Team
  */
 @Slf4j
+@Service
 public class AgentRegistry {
     
-    /**
-     * 单例实例（使用 volatile 保证可见性）
-     */
-    private static volatile AgentRegistry instance;
-    
-    /**
-     * 初始化锁
-     */
-    private static final Object LOCK = new Object();
+
     
     /**
      * 默认 Agent 名称
@@ -53,13 +56,29 @@ public class AgentRegistry {
     
     /**
      * 已加载的 Agent 规范缓存（线程安全）
+     * 
      * Key: Agent 配置文件路径（绝对路径）
+     * Value: 已解析的 Agent 规范
+     * 
+     * 缓存理由：Agent 规范是纯配置数据，可安全共享
      */
     private final Map<Path, ResolvedAgentSpec> specCache = new ConcurrentHashMap<>();
     
     /**
      * 已加载的 Agent 实例缓存（线程安全）
+     * 
      * Key: Agent 配置文件路径（绝对路径）
+     * Value: 完整的 Agent 实例（包含渲染后的系统提示词）
+     * 
+     * 缓存理由：
+     * - Agent 是不可变的数据对象（name、systemPrompt、tools）
+     * - 不包含任何运行时状态或会话信息
+     * - systemPrompt 虽然是运行时渲染的，但对于同一配置文件，渲染结果通常相同
+     * - 可安全地在多个 Session/Runtime 之间共享
+     * 
+     * 注意事项：
+     * - 如果 Agent 配置文件变更，需调用 reload() 清除缓存
+     * - systemPrompt 中如果包含动态内容（如时间戳），可能需要考虑缓存失效策略
      */
     private final Map<Path, Agent> agentCache = new ConcurrentHashMap<>();
     
@@ -69,56 +88,25 @@ public class AgentRegistry {
     private final Path agentsRootDir;
     
     /**
-     * 私有构造函数（防止外部实例化）
+     * 构造函数（由 Spring 管理）
      */
-    private AgentRegistry() {
+    public AgentRegistry() {
         this.agentsRootDir = resolveAgentsDirectory();
         log.info("Agent Registry initialized, agents root: {}", agentsRootDir);
     }
     
-    /**
-     * 获取单例实例（双重检查锁定）
-     * 
-     * @return AgentRegistry 单例实例
-     */
-    public static AgentRegistry getInstance() {
-        if (instance == null) {
-            synchronized (LOCK) {
-                if (instance == null) {
-                    instance = new AgentRegistry();
-                }
-            }
-        }
-        return instance;
-    }
-    
-    /**
-     * 初始化注册表
-     * 用于在应用启动时执行预加载等初始化操作
-     * 
-     * @return 初始化后的单例实例
-     */
-    public static AgentRegistry initialize() {
-        AgentRegistry registry = getInstance();
-        log.info("Agent Registry initialization complete");
-        log.info("Agents root directory: {}", registry.agentsRootDir);
-        
-        // 可选：预加载默认 Agent 规范
-        try {
-            registry.loadDefaultAgentSpec()
-                .doOnSuccess(spec -> log.info("Preloaded default agent: {}", spec.getName()))
-                .doOnError(e -> log.warn("Failed to preload default agent: {}", e.getMessage()))
-                .subscribe();
-        } catch (Exception e) {
-            log.warn("Failed to preload default agent during initialization", e);
-        }
-        
-        return registry;
-    }
+
     
     /**
      * 重新加载所有 Agent 配置
      * 清除所有缓存并重新扫描 agents 目录
+     * 
+     * 使用场景：
+     * - Agent 配置文件已修改，需要重新加载
+     * - 系统提示词模板已更新
+     * - 开发环境下的热更新
+     * 
+     * 注意：此操作会清除所有缓存，下次加载时将从文件重新读取
      */
     public void reload() {
         log.info("Reloading all agent configurations...");
@@ -223,8 +211,14 @@ public class AgentRegistry {
      * 加载 Agent 实例
      * 如果已缓存则直接返回缓存的实例
      * 
+     * 缓存策略说明：
+     * - Agent 是无状态的配置对象，可安全缓存和共享
+     * - 虽然方法接受 Runtime 参数，但仅用于系统提示词渲染，不影响 Agent 本身的状态
+     * - 对于相同的配置文件，无论 Runtime 如何，返回的 Agent 配置是一致的
+     * - 如果需要每次都重新加载（例如配置文件频繁变更），请先调用 reload()
+     * 
      * @param agentFile Agent 配置文件路径
-     * @param runtime 运行时上下文
+     * @param runtime 运行时上下文（用于系统提示词渲染）
      * @return 完整的 Agent 实例（包含系统提示词）
      */
     public Mono<Agent> loadAgent(Path agentFile, Runtime runtime) {
@@ -234,8 +228,8 @@ public class AgentRegistry {
                     ? agentFile.toAbsolutePath().normalize() 
                     : getDefaultAgentPath();
             
-            // 检查缓存（注意：缓存的 Agent 可能不适用于不同的 Runtime）
-            // 这里简化处理，实际使用中可以考虑基于 Runtime 参数的缓存策略
+            // 检查缓存
+            // Agent 是不可变配置对象，缓存安全，可在不同 Runtime 间共享
             Agent cached = agentCache.get(absolutePath);
             if (cached != null) {
                 log.debug("Agent cache hit: {}", absolutePath);
@@ -385,10 +379,12 @@ public class AgentRegistry {
     }
     
     /**
-     * 清除缓存（内部使用）
-     * 用于强制重新加载 Agent 配置
+     * 清除所有缓存（公共方法）
+     * 用于强制重新加载 Agent 配置，例如配置文件变更后
+     * 
+     * 线程安全：ConcurrentHashMap 的 clear() 操作是原子的
      */
-    private void clearCache() {
+    public void clearCache() {
         int specCount = specCache.size();
         int agentCount = agentCache.size();
         
@@ -399,11 +395,12 @@ public class AgentRegistry {
     }
     
     /**
-     * 清除指定 Agent 的缓存（内部使用）
+     * 清除指定 Agent 的缓存（公共方法）
+     * 用于单个 Agent 配置更新后的增量刷新
      * 
      * @param agentFile Agent 配置文件路径
      */
-    private void clearCache(Path agentFile) {
+    public void clearCache(Path agentFile) {
         Path absolutePath = agentFile.toAbsolutePath().normalize();
         
         boolean specRemoved = specCache.remove(absolutePath) != null;

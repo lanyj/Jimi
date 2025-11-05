@@ -8,6 +8,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -20,13 +23,17 @@ import java.util.stream.Stream;
 /**
  * Glob 工具 - 使用 Glob 模式匹配文件
  * 支持文件和目录的匹配
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class Glob extends AbstractTool<Glob.Params> {
     
     private static final int MAX_MATCHES = 1000;
     
-    private final Path workDir;
+    private Path workDir;
     
     /**
      * 参数模型
@@ -53,12 +60,15 @@ public class Glob extends AbstractTool<Glob.Params> {
         private boolean includeDirs = true;
     }
     
-    public Glob(BuiltinSystemPromptArgs builtinArgs) {
+    public Glob() {
         super(
             "Glob",
             String.format("Search for files/directories using glob patterns. Maximum %d matches returned.", MAX_MATCHES),
             Params.class
         );
+    }
+    
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
     }
     

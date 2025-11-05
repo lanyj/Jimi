@@ -8,6 +8,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -19,8 +22,12 @@ import java.util.List;
 /**
  * ReadFile工具
  * 用于读取文件内容
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class ReadFile extends AbstractTool<ReadFile.Params> {
     
     private static final String NAME = "ReadFile";
@@ -34,10 +41,19 @@ public class ReadFile extends AbstractTool<ReadFile.Params> {
             MAX_LINES, MAX_LINE_LENGTH, MAX_BYTES / 1024
     );
     
-    private final Path workDir;
+    private Path workDir;
     
-    public ReadFile(BuiltinSystemPromptArgs builtinArgs) {
+    /**
+     * 默认构造函数（Spring 调用）
+     */
+    public ReadFile() {
         super(NAME, DESCRIPTION, Params.class);
+    }
+    
+    /**
+     * 设置工作目录（运行时注入）
+     */
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
     }
     

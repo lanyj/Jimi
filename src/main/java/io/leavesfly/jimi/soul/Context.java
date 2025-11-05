@@ -29,6 +29,10 @@ import java.util.List;
  * 3. 检查点机制（创建、回退）
  * 4. 文件持久化（JSONL 格式）
  * 5. 上下文恢复
+ * 
+ * 创建方式：
+ * - 使用静态工厂方法 {@link #create(Path, ObjectMapper)} 确保完整初始化
+ * - 或使用构造函数 + 手动调用 {@link #restore()}（不推荐）
  */
 @Slf4j
 public class Context {
@@ -60,12 +64,37 @@ public class Context {
     }
     
     /**
-     * 从文件后端恢复上下文
+     * 静态工厂方法：创建并恢复 Context
+     * 确保 Context 实例完整初始化（推荐使用）
+     * 
+     * @param fileBackend 文件后端路径
+     * @param objectMapper JSON 序列化工具
+     * @return 完整初始化的 Context 实例
+     */
+    public static Mono<Context> create(Path fileBackend, ObjectMapper objectMapper) {
+        return Mono.fromCallable(() -> {
+            Context context = new Context(fileBackend, objectMapper);
+            // 同步执行 restore 逻辑
+            context.restoreSync();
+            return context;
+        });
+    }
+    
+    /**
+     * 从文件后端恢复上下文（异步版本）
      * 
      * @return 是否成功恢复（true 表示恢复了数据，false 表示文件不存在或为空）
      */
     public Mono<Boolean> restore() {
-        return Mono.fromCallable(() -> {
+        return Mono.fromCallable(this::restoreSync);
+    }
+    
+    /**
+     * 从文件后端恢复上下文（同步版本）
+     * 由静态工厂方法内部使用
+     */
+    private boolean restoreSync() {
+        try {
             log.debug("Restoring context from file: {}", fileBackend);
             
             if (!history.isEmpty()) {
@@ -112,11 +141,11 @@ public class Context {
                 log.info("Restored context: {} messages, {} tokens, {} checkpoints", 
                         history.size(), tokenCount, nextCheckpointId);
                 return true;
-            } catch (IOException e) {
-                log.error("Failed to restore context from file", e);
-                throw new RuntimeException("Failed to restore context", e);
             }
-        });
+        } catch (IOException e) {
+            log.error("Failed to restore context from file", e);
+            throw new RuntimeException("Failed to restore context", e);
+        }
     }
     
     /**

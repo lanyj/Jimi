@@ -5,12 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.leavesfly.jimi.soul.approval.Approval;
-import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
-import io.leavesfly.jimi.tool.bash.Bash;
-import io.leavesfly.jimi.tool.file.*;
-import io.leavesfly.jimi.tool.think.Think;
-import io.leavesfly.jimi.tool.todo.SetTodoList;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -20,6 +14,9 @@ import java.util.*;
 /**
  * 工具注册表
  * 管理所有可用工具的注册、查找和调用
+ * 
+ * 注意：ToolRegistry 不是 Spring Bean，每个 JimiSoul 实例都有自己的 ToolRegistry
+ * 因为不同的 Soul 可能有不同的工具配置和运行时参数
  */
 @Slf4j
 public class ToolRegistry {
@@ -219,41 +216,5 @@ public class ToolRegistry {
         schema.set("function", function);
 
         return schema;
-    }
-
-    /**
-     * 创建标准工具集
-     * 包含所有内置工具
-     */
-    public static ToolRegistry createStandardRegistry(
-            BuiltinSystemPromptArgs builtinArgs,
-            Approval approval,
-            ObjectMapper objectMapper
-    ) {
-        ToolRegistry registry = new ToolRegistry(objectMapper);
-
-        // 注册文件工具
-        registry.register(new ReadFile(builtinArgs));
-        registry.register(new WriteFile(builtinArgs, approval));
-        registry.register(new StrReplaceFile(builtinArgs, approval));
-        registry.register(new Glob(builtinArgs));
-        registry.register(new Grep(builtinArgs));
-
-        // 注册 Bash 工具
-        registry.register(new Bash(approval));
-
-        // 注册 Think 工具
-        registry.register(new Think());
-
-        // 注册 Todo 工具
-        registry.register(new SetTodoList());
-
-        // TODO: 注册其他工具
-        // registry.register(new Task(...));
-        // registry.register(new WebSearch(...));
-        // registry.register(new WebFetch(...));
-
-        log.info("Created standard tool registry with {} tools", registry.tools.size());
-        return registry;
     }
 }

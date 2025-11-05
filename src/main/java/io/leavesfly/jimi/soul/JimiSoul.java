@@ -48,6 +48,11 @@ public class JimiSoul implements Soul {
     private final ObjectMapper objectMapper;
     private final Compaction compaction;
 
+    /**
+     * 简化构造函数（保留兼容性）
+     * @deprecated 推荐使用完整构造函数，通过 JimiFactory 创建并注入 Compaction
+     */
+    @Deprecated
     public JimiSoul(
             Agent agent,
             Runtime runtime,
@@ -55,14 +60,33 @@ public class JimiSoul implements Soul {
             ToolRegistry toolRegistry,
             ObjectMapper objectMapper
     ) {
+        this(agent, runtime, context, toolRegistry, objectMapper, 
+            new WireImpl(), new SimpleCompaction());
+    }
+    
+    /**
+     * 完整构造函数（支持依赖注入）
+     * 允许自定义 Wire 和 Compaction 实现
+     */
+    public JimiSoul(
+            Agent agent,
+            Runtime runtime,
+            Context context,
+            ToolRegistry toolRegistry,
+            ObjectMapper objectMapper,
+            Wire wire,
+            Compaction compaction
+    ) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
         this.toolRegistry = toolRegistry;
         this.objectMapper = objectMapper;
-        this.wire = new WireImpl();
+        this.wire = wire;
+        this.compaction = compaction;
+        
+        // 设置 Approval 事件转发
         runtime.getApproval().asFlux().subscribe(wire::send);
-        this.compaction = new SimpleCompaction();
     }
 
     // Getter methods for Shell UI and other components

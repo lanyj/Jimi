@@ -14,6 +14,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
@@ -49,6 +52,8 @@ import java.util.List;
  * @author 山泽
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class PatchFile extends AbstractTool<PatchFile.Params> {
     
     private static final String NAME = "PatchFile";
@@ -74,8 +79,8 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
             ```
             """;
     
-    private final Path workDir;
-    private final Approval approval;
+    private Path workDir;
+    private Approval approval;
     
     /**
      * PatchFile 工具参数
@@ -99,9 +104,15 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
         private String diff;
     }
     
-    public PatchFile(BuiltinSystemPromptArgs builtinArgs, Approval approval) {
+    public PatchFile() {
         super(NAME, DESCRIPTION, Params.class);
+    }
+    
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
+    }
+    
+    public void setApproval(Approval approval) {
         this.approval = approval;
     }
     

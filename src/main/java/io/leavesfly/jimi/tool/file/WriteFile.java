@@ -10,6 +10,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
@@ -19,14 +22,18 @@ import java.nio.file.StandardOpenOption;
 /**
  * WriteFile 工具 - 写入文件内容
  * 支持覆盖（overwrite）和追加（append）两种模式
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class WriteFile extends AbstractTool<WriteFile.Params> {
     
     private static final String EDIT_ACTION = "EDIT";
     
-    private final Path workDir;
-    private final Approval approval;
+    private Path workDir;
+    private Approval approval;
     
     /**
      * 参数模型
@@ -53,13 +60,25 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
         private String mode = "overwrite";
     }
     
-    public WriteFile(BuiltinSystemPromptArgs builtinArgs, Approval approval) {
+    /**
+     * 默认构造函数（Spring 调用）
+     */
+    public WriteFile() {
         super(
             "WriteFile",
             "Write content to a file. Supports overwrite and append modes.",
             Params.class
         );
+    }
+    
+    /**
+     * 设置运行时参数
+     */
+    public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getKimiWorkDir();
+    }
+    
+    public void setApproval(Approval approval) {
         this.approval = approval;
     }
     

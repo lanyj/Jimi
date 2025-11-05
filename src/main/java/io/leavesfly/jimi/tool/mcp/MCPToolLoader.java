@@ -2,7 +2,10 @@ package io.leavesfly.jimi.tool.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.tool.ToolRegistry;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,28 +15,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP 工具加载器 - 轻量级本地实现
- * 不依赖io.modelcontextprotocol.sdk，使用本地JSON-RPC客户端
+ * MCP 工具加载器 - Spring Service
+ * 负责加载和管理 MCP 工具的生命周期
  * 
  * 主要职责：
  * 1. 从配置文件加载MCP服务配置
  * 2. 为每个服务创建StdIoJsonRpcClient客户端
  * 3. 查询服务提供的工具列表
  * 4. 将工具包装为MCPTool并注册到ToolRegistry
+ * 5. 统一管理客户端生命周期（通过 @PreDestroy 自动清理）
+ * 
+ * @author Jimi Team
  */
 @Slf4j
+@Service
 public class MCPToolLoader {
     /** JSON序列化工具 */
     private final ObjectMapper objectMapper;
     /** 活跃的客户端列表，用于统一管理和关闭 */
     private final List<StdIoJsonRpcClient> activeClients = new ArrayList<>();
 
+    @Autowired
     public MCPToolLoader(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-    }
-
-    public MCPToolLoader() {
-        this(new ObjectMapper());
+        log.info("MCPToolLoader initialized as Spring Service");
     }
 
     /**
@@ -153,9 +158,11 @@ public class MCPToolLoader {
 
     /**
      * 关闭所有活跃的客户端连接
-     * 应在应用关闭时调用，释放资源
+     * 由 Spring 容器在应用关闭时自动调用
      */
+    @PreDestroy
     public void closeAll() {
+        log.info("Closing {} MCP client(s)...", activeClients.size());
         for (StdIoJsonRpcClient client : activeClients) {
             try { 
                 client.close(); 
@@ -164,5 +171,6 @@ public class MCPToolLoader {
             }
         }
         activeClients.clear();
+        log.info("All MCP clients closed");
     }
 }
