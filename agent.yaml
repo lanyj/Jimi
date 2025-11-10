@@ -1,0 +1,59 @@
+# Default Agent 配置
+name: Default Agent
+description: 通用软件开发助手
+
+# 系统提示词文件路径
+system_prompt: system_prompt.md
+
+# 系统提示词参数（可选）
+system_prompt_args: { }
+
+# 指定模型（可选，如果不指定则使用全局默认模型）
+#model: qwen3-max
+#model: qwen3:4b-instruct-2507-q8_0
+model: qwen3-coder-plus
+
+# 可用工具列表
+tools:
+  - Bash
+  - ReadFile
+  - WriteFile
+#  - StrReplaceFile
+#  - PatchFile
+  - Glob
+  - Grep
+#  - SearchWeb
+#  - FetchURL
+  - Think
+  - SetTodoList
+#  - Task
+
+# 子 Agent 配置
+subagents:
+  #  design:
+  #    path: design/agent.yaml
+  #    description: 需求分析、架构设计和技术方案规划
+  code:
+    path: code/agent.yaml
+    description: 代码实现、重构和优化
+#  review:
+#    path: review/agent.yaml
+#    description: 代码质量审查和最佳实践检查
+#  build:
+#    path: build/agent.yaml
+#    description: 构建和编译项目，修复编译错误
+#  test:
+#    path: test/agent.yaml
+#    description: 运行测试并分析测试失败
+#  debug:
+#    path: debug/agent.yaml
+#    description: 调试和修复运行时错误及缺陷
+#  deploy:
+#    path: deploy/agent.yaml
+#    description: 应用部署、配置管理和运维支持
+#  doc:
+#    path: doc/agent.yaml
+#    description: 技术文档编写和维护
+#  research:
+#    path: research/agent.yaml
+#    description: 搜索和研究技术信息

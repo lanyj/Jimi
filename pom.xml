@@ -141,6 +141,12 @@
             <version>${caffeine.version}</version>
         </dependency>
         
+        <!-- Netty DNS resolver for macOS -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <classifier>osx-aarch_64</classifier>
+        </dependency>
 
         <!-- Lombok -->
         <dependency>
