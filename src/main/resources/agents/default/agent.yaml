@@ -9,9 +9,14 @@ system_prompt: system_prompt.md
 system_prompt_args: { }
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
-#model: qwen3-max
+model: qwen-plus-latest
 #model: qwen3:4b-instruct-2507-q8_0
-model: qwen3-coder-plus
+#model: qwen3-coder-plus
+#model: qwen3-max
+#model: qwen-max
+#model: deepseek-v3.2-exp
+#model: Moonshot-Kimi-K2-Instruct
+
 
 # 可用工具列表
 tools:
