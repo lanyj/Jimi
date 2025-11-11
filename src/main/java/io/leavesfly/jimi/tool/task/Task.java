@@ -371,12 +371,16 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 创建子 JimiSoul
      */
     private JimiSoul createSubSoul(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
+        // 使用完整构造函数，传入isSubagent=true标记
         return new JimiSoul(
                 agent,
                 runtime,
                 subContext,
                 subToolRegistry,
-                objectMapper
+                objectMapper,
+                new io.leavesfly.jimi.wire.WireImpl(),
+                new io.leavesfly.jimi.soul.compaction.SimpleCompaction(),
+                true  // 标记为子Agent
         );
     }
 
@@ -388,7 +392,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         if (parentWire != null) {
             return subWire.asFlux().subscribe(msg -> {
                 // 转发所有 Wire 消息到主 Wire，实现子Agent执行过程可视化
-                log.debug("Forwarding subagent wire message: {}", msg.getClass().getSimpleName());
+//                log.debug("Forwarding subagent wire message: {}", msg.getClass().getSimpleName());
                 parentWire.send(msg);
             });
         } else {

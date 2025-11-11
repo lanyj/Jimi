@@ -49,6 +49,7 @@ public class JimiSoul implements Soul {
     private final ObjectMapper objectMapper;
     private final Compaction compaction;
     private final AgentExecutor executor;
+    private final boolean isSubagent;  // 标记是否为子Agent
 
     /**
      * 简化构造函数（保留兼容性）
@@ -63,7 +64,7 @@ public class JimiSoul implements Soul {
             ObjectMapper objectMapper
     ) {
         this(agent, runtime, context, toolRegistry, objectMapper, 
-            new WireImpl(), new SimpleCompaction());
+            new WireImpl(), new SimpleCompaction(), false);
     }
     
     /**
@@ -79,6 +80,23 @@ public class JimiSoul implements Soul {
             Wire wire,
             Compaction compaction
     ) {
+        this(agent, runtime, context, toolRegistry, objectMapper, wire, compaction, false);
+    }
+    
+    /**
+     * 最完整构造函数（支持子Agent标记）
+     * 用于创建子Agent的JimiSoul实例
+     */
+    public JimiSoul(
+            Agent agent,
+            Runtime runtime,
+            Context context,
+            ToolRegistry toolRegistry,
+            ObjectMapper objectMapper,
+            Wire wire,
+            Compaction compaction,
+            boolean isSubagent
+    ) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
@@ -86,9 +104,10 @@ public class JimiSoul implements Soul {
         this.objectMapper = objectMapper;
         this.wire = wire;
         this.compaction = compaction;
+        this.isSubagent = isSubagent;
         
-        // 创建执行器
-        this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction);
+        // 创建执行器（传入isSubagent标记）
+        this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction, isSubagent);
         
         // 设置 Approval 事件转发
         runtime.getApproval().asFlux().subscribe(wire::send);

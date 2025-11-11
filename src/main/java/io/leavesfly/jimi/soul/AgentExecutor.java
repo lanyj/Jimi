@@ -56,6 +56,8 @@ public class AgentExecutor {
     private final Wire wire;
     private final ToolRegistry toolRegistry;
     private final Compaction compaction;
+    private final boolean isSubagent;  // 标记是否为子Agent
+    private final String agentName;    // Agent名称（用于显示）
 
     // 工具调用相关的辅助组件
     private final ToolCallValidator toolCallValidator = new ToolCallValidator();
@@ -65,6 +67,9 @@ public class AgentExecutor {
     // 用于跟踪连续的无工具调用步数
     private int consecutiveNoToolCallSteps = 0;
 
+    /**
+     * 主Agent构造函数（默认isSubagent=false）
+     */
     public AgentExecutor(
             Agent agent,
             Runtime runtime,
@@ -73,12 +78,29 @@ public class AgentExecutor {
             ToolRegistry toolRegistry,
             Compaction compaction
     ) {
+        this(agent, runtime, context, wire, toolRegistry, compaction, false);
+    }
+
+    /**
+     * 完整构造函数（支持子Agent标记）
+     */
+    public AgentExecutor(
+            Agent agent,
+            Runtime runtime,
+            Context context,
+            Wire wire,
+            ToolRegistry toolRegistry,
+            Compaction compaction,
+            boolean isSubagent
+    ) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
         this.wire = wire;
         this.toolRegistry = toolRegistry;
         this.compaction = compaction;
+        this.isSubagent = isSubagent;
+        this.agentName = agent.getName();
     }
 
     /**
@@ -115,8 +137,8 @@ public class AgentExecutor {
             return Mono.error(new MaxStepsReachedException(maxSteps));
         }
 
-        // 发送步骤开始消息
-        wire.send(new StepBegin(stepNo));
+        // 发送步骤开始消息（带上Agent名称和子Agent标记）
+        wire.send(new StepBegin(stepNo, isSubagent, agentName));
 
         return Mono.defer(() -> {
             // 检查上下文是否超限，触发压缩

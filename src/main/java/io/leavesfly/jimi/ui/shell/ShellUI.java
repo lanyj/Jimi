@@ -139,11 +139,19 @@ public class ShellUI implements AutoCloseable {
     private void handleWireMessage(WireMessage message) {
         try {
             if (message instanceof StepBegin stepBegin) {
-                currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
-                printStatus("🤔 Step " + stepBegin.getStepNumber() + " - Thinking...");
-                // 重置输出标志和行长度
-                assistantOutputStarted.set(false);
-                currentLineLength.set(0);
+                // 显示主Agent和subAgent的步骤，但用不同的格式区分
+                if (stepBegin.isSubagent()) {
+                    // subAgent的步骤 - 显示缩进和Agent名称
+                    String agentName = stepBegin.getAgentName() != null ? stepBegin.getAgentName() : "subagent";
+                    printStatus("  🤖 [" + agentName + "] Step " + stepBegin.getStepNumber() + " - Thinking...");
+                } else {
+                    // 主Agent的步骤
+                    currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
+                    printStatus("🤔 Step " + stepBegin.getStepNumber() + " - Thinking...");
+                    // 重置输出标志和行长度
+                    assistantOutputStarted.set(false);
+                    currentLineLength.set(0);
+                }
 
             } else if (message instanceof StepInterrupted) {
                 currentStatus.set("interrupted");

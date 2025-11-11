@@ -17,5 +17,5 @@ tools:
   - WriteFile     # 编写文档
   - Grep          # 搜索代码和文档
   - Glob          # 查找相关文件
-  - FetchURL      # 获取网页内容
+#  - FetchURL      # 获取网页内容
   - Think         # 组织文档结构
