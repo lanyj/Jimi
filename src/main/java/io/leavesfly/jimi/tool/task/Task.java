@@ -371,7 +371,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 创建子 JimiEngine
      */
     private JimiEngine createSubSoul(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
-        // 使用完整构造函数，传入isSubagent=true标记
+        // 使用完整构造函数，传入isSubagent=true标记，Skill组件传null
         return new JimiEngine(
                 agent,
                 runtime,
@@ -380,7 +380,9 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 objectMapper,
                 new io.leavesfly.jimi.wire.WireImpl(),
                 new SimpleCompaction(),
-                true  // 标记为子Agent
+                true,  // 标记为子Agent
+                null,  // SkillMatcher（子Agent不需要）
+                null   // SkillProvider（子Agent不需要）
         );
     }
 

@@ -8,6 +8,7 @@ import io.leavesfly.jimi.llm.ChatCompletionResult;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
+import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
 import io.leavesfly.jimi.llm.message.FunctionCall;
@@ -16,6 +17,9 @@ import io.leavesfly.jimi.engine.runtime.Runtime;
 import io.leavesfly.jimi.engine.toolcall.ToolCallFilter;
 import io.leavesfly.jimi.engine.toolcall.ToolCallValidator;
 import io.leavesfly.jimi.engine.toolcall.ToolErrorTracker;
+import io.leavesfly.jimi.skill.SkillMatcher;
+import io.leavesfly.jimi.skill.SkillProvider;
+import io.leavesfly.jimi.skill.SkillSpec;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.Wire;
@@ -56,6 +60,8 @@ public class AgentExecutor {
     private final Compaction compaction;
     private final boolean isSubagent;  // 标记是否为子Agent
     private final String agentName;    // Agent名称（用于显示）
+    private final SkillMatcher skillMatcher;  // Skill匹配器（可选）
+    private final SkillProvider skillProvider; // Skill提供者（可选）
 
     // 工具调用相关的辅助组件
     private final ToolCallValidator toolCallValidator = new ToolCallValidator();
@@ -76,11 +82,11 @@ public class AgentExecutor {
             ToolRegistry toolRegistry,
             Compaction compaction
     ) {
-        this(agent, runtime, context, wire, toolRegistry, compaction, false);
+        this(agent, runtime, context, wire, toolRegistry, compaction, false, null, null);
     }
 
     /**
-     * 完整构造函数（支持子Agent标记）
+     * 完整构造函数（支持子Agent标记和Skill组件）
      */
     public AgentExecutor(
             Agent agent,
@@ -89,7 +95,9 @@ public class AgentExecutor {
             Wire wire,
             ToolRegistry toolRegistry,
             Compaction compaction,
-            boolean isSubagent
+            boolean isSubagent,
+            SkillMatcher skillMatcher,
+            SkillProvider skillProvider
     ) {
         this.agent = agent;
         this.runtime = runtime;
@@ -99,6 +107,8 @@ public class AgentExecutor {
         this.compaction = compaction;
         this.isSubagent = isSubagent;
         this.agentName = agent.getName();
+        this.skillMatcher = skillMatcher;
+        this.skillProvider = skillProvider;
     }
 
     /**
@@ -142,6 +152,7 @@ public class AgentExecutor {
             // 检查上下文是否超限，触发压缩
             return checkAndCompactContext()
                     .then(context.checkpoint(true))
+                    .then(matchAndInjectSkills(stepNo))  // 在每个步骤开始前匹配和注入 Skills
                     .then(step())
                     .flatMap(finished -> {
                         if (finished) {
@@ -201,6 +212,80 @@ public class AgentExecutor {
             }
 
             return Mono.empty();
+        });
+    }
+    
+    /**
+     * 匹配和注入 Skills（如果启用）
+     * 
+     * @param stepNo 当前步骤号
+     * @return 完成的 Mono
+     */
+    private Mono<Void> matchAndInjectSkills(int stepNo) {
+        // 如果没有配置 Skill 组件，直接跳过
+        if (skillMatcher == null || skillProvider == null) {
+            return Mono.empty();
+        }
+        
+        // 只在第一步执行 Skill 匹配（基于用户输入）
+        // 后续步骤可以基于上下文进行动态匹配
+        if (stepNo == 1) {
+            return matchSkillsFromUserInput();
+        }
+        
+        // TODO: 后续可以添加基于上下文的动态 Skill 匹配
+        // return matchSkillsFromContext();
+        
+        return Mono.empty();
+    }
+    
+    /**
+     * 从用户输入匹配 Skills
+     */
+    private Mono<Void> matchSkillsFromUserInput() {
+        return Mono.defer(() -> {
+            // 获取最近的用户消息
+            List<Message> history = context.getHistory();
+            if (history.isEmpty()) {
+                return Mono.empty();
+            }
+            
+            // 从最后一条用户消息中提取内容
+            Message lastMessage = history.get(history.size() - 1);
+            if (lastMessage.getRole() != MessageRole.USER) {
+                // 如果最后一条不是用户消息，向前查找
+                for (int i = history.size() - 1; i >= 0; i--) {
+                    if (history.get(i).getRole() == MessageRole.USER) {
+                        lastMessage = history.get(i);
+                        break;
+                    }
+                }
+            }
+            
+            // 如果没找到用户消息，跳过
+            if (lastMessage.getRole() != MessageRole.USER) {
+                return Mono.empty();
+            }
+            
+            // 提取内容部分
+            List<ContentPart> contentParts = lastMessage.getContentParts();
+            if (contentParts.isEmpty()) {
+                return Mono.empty();
+            }
+            
+            // 匹配 Skills
+            List<SkillSpec> matchedSkills = skillMatcher.matchFromInput(contentParts);
+            
+            if (matchedSkills.isEmpty()) {
+                log.debug("No skills matched from user input");
+                return Mono.empty();
+            }
+            
+            // 发送 Wire 消息
+            wire.send(SkillsActivated.from(matchedSkills));
+            
+            // 注入 Skills
+            return skillProvider.injectSkills(context, matchedSkills);
         });
     }
 

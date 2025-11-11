@@ -21,3 +21,38 @@ logging:
       write_dates_as_timestamps: false
     deserialization:
       fail_on_unknown_properties: false
+
+# Jimi 配置
+jimi:
+  # Skills 功能配置
+  skill:
+    # 是否启用 Skills 功能
+    enabled: false
+    # 是否自动匹配 Skills
+    auto-match: true
+    # 匹配配置
+    matching:
+      # 用户输入匹配的最低得分阈值 (0-100)
+      score-threshold: 30
+      # 上下文匹配的最低得分阈值 (0-100)
+      context-score-threshold: 15
+      # 最大匹配 Skills 数量
+      max-matched-skills: 5
+      # 是否启用上下文动态匹配
+      enable-context-matching: false
+    # 缓存配置
+    cache:
+      # 是否启用缓存
+      enabled: true
+      # 缓存过期时间（秒）
+      ttl: 3600
+      # 缓存最大条目数
+      max-size: 1000
+    # 日志配置
+    logging:
+      # 是否记录匹配详情
+      log-match-details: false
+      # 是否记录注入详情
+      log-injection-details: false
+      # 是否记录性能指标
+      log-performance-metrics: false

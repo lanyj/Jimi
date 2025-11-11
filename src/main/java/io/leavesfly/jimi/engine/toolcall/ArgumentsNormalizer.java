@@ -495,7 +495,7 @@ public class ArgumentsNormalizer {
 
     /**
      * 将逗号分隔的参数转换为JSON数组格式
-     * 例如: "/Users/yefei.yf/Jimi/java/README.md", 1, 100 -> ["/Users/yefei.yf/Jimi/java/README.md", 1, 100]
+     * 例如: "/Users/yefei.yf/Jimi/java/SKILLS_README.md", 1, 100 -> ["/Users/yefei.yf/Jimi/java/SKILLS_README.md", 1, 100]
      */
     private static String convertCommaDelimitedToJson(String trimmed, String original, String toolName) {
         // 如果已经是有效的JSON格式（以{或[开头），直接返回

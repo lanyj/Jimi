@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
+import io.leavesfly.jimi.skill.SkillSpec;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -49,6 +50,11 @@ public class Context {
     private int nextCheckpointId;
     
     /**
+     * 激活的 Skills 列表
+     */
+    private final List<SkillSpec> activeSkills;
+    
+    /**
      * 构造器（使用同步Repository）
      */
     public Context(Path fileBackend, ObjectMapper objectMapper) {
@@ -69,6 +75,7 @@ public class Context {
         this.history = new ArrayList<>();
         this.tokenCount = 0;
         this.nextCheckpointId = 0;
+        this.activeSkills = new ArrayList<>();
     }
     
 
@@ -220,5 +227,63 @@ public class Context {
      */
     public int getnCheckpoints() {
         return nextCheckpointId;
+    }
+    
+    /**
+     * 添加激活的 Skills
+     * 
+     * @param skills 要添加的 Skills 列表
+     * @return 完成的 Mono
+     */
+    public Mono<Void> addActiveSkills(List<SkillSpec> skills) {
+        return Mono.defer(() -> {
+            if (skills == null || skills.isEmpty()) {
+                return Mono.empty();
+            }
+            
+            // 去重添加
+            for (SkillSpec skill : skills) {
+                if (!isSkillActive(skill.getName())) {
+                    activeSkills.add(skill);
+                    log.debug("Added active skill: {}", skill.getName());
+                }
+            }
+            
+            return Mono.empty();
+        });
+    }
+    
+    /**
+     * 获取激活的 Skills
+     * 
+     * @return Skills 列表（只读视图）
+     */
+    public List<SkillSpec> getActiveSkills() {
+        return Collections.unmodifiableList(activeSkills);
+    }
+    
+    /**
+     * 检查某个 Skill 是否已激活
+     * 
+     * @param skillName Skill 名称
+     * @return 是否已激活
+     */
+    public boolean isSkillActive(String skillName) {
+        return activeSkills.stream()
+                .anyMatch(skill -> skill.getName().equals(skillName));
+    }
+    
+    /**
+     * 清除所有激活的 Skills
+     * 
+     * @return 完成的 Mono
+     */
+    public Mono<Void> clearActiveSkills() {
+        return Mono.defer(() -> {
+            int count = activeSkills.size();
+            activeSkills.clear();
+            log.debug("Cleared {} active skills", count);
+            return Mono.empty();
+        });
     }
 }

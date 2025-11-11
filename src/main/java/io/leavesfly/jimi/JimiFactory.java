@@ -22,6 +22,8 @@ import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.mcp.MCPToolProvider;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.mcp.MCPToolLoader;
+import io.leavesfly.jimi.skill.SkillMatcher;
+import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +62,10 @@ public class JimiFactory {
     private Compaction compaction;
     @Autowired
     private List<ToolProvider> toolProviders;  // Spring 自动注入所有 ToolProvider
+    @Autowired(required = false)
+    private SkillMatcher skillMatcher;  // Skill 匹配器（可选）
+    @Autowired(required = false)
+    private SkillProvider skillProvider; // Skill 提供者（可选）
 
 
     /**
@@ -124,8 +130,9 @@ public class JimiFactory {
                 // 7. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
                 ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, agentSpec, runtime, mcpConfigFiles);
 
-                // 8. 创建 JimiEngine（注入 Compaction）
-                JimiEngine soul = new JimiEngine(agent, runtime, context, toolRegistry, objectMapper, new WireImpl(), compaction);
+                // 8. 创建 JimiEngine（注入 Compaction 和 Skill 组件）
+                JimiEngine soul = new JimiEngine(agent, runtime, context, toolRegistry, objectMapper, 
+                        new WireImpl(), compaction, false, skillMatcher, skillProvider);
 
                 // 9. 恢复上下文历史
                 return context.restore()

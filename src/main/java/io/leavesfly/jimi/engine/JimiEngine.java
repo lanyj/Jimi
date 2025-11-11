@@ -11,6 +11,8 @@ import io.leavesfly.jimi.engine.compaction.Compaction;
 import io.leavesfly.jimi.engine.compaction.SimpleCompaction;
 
 import io.leavesfly.jimi.engine.runtime.Runtime;
+import io.leavesfly.jimi.skill.SkillMatcher;
+import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.WireAware;
 import io.leavesfly.jimi.wire.Wire;
@@ -50,6 +52,8 @@ public class JimiEngine implements Engine {
     private final Compaction compaction;
     private final AgentExecutor executor;
     private final boolean isSubagent;  // 标记是否为子Agent
+    private final SkillMatcher skillMatcher;  // Skill 匹配器（可选）
+    private final SkillProvider skillProvider; // Skill 提供者（可选）
 
     /**
      * 简化构造函数（保留兼容性）
@@ -64,7 +68,7 @@ public class JimiEngine implements Engine {
             ObjectMapper objectMapper
     ) {
         this(agent, runtime, context, toolRegistry, objectMapper, 
-            new WireImpl(), new SimpleCompaction(), false);
+            new WireImpl(), new SimpleCompaction(), false, null, null);
     }
     
     /**
@@ -80,11 +84,11 @@ public class JimiEngine implements Engine {
             Wire wire,
             Compaction compaction
     ) {
-        this(agent, runtime, context, toolRegistry, objectMapper, wire, compaction, false);
+        this(agent, runtime, context, toolRegistry, objectMapper, wire, compaction, false, null, null);
     }
     
     /**
-     * 最完整构造函数（支持子Agent标记）
+     * 最完整构造函数（支持子Agent标记和Skill组件）
      * 用于创建子Agent的JimiSoul实例
      */
     public JimiEngine(
@@ -95,7 +99,9 @@ public class JimiEngine implements Engine {
             ObjectMapper objectMapper,
             Wire wire,
             Compaction compaction,
-            boolean isSubagent
+            boolean isSubagent,
+            SkillMatcher skillMatcher,
+            SkillProvider skillProvider
     ) {
         this.agent = agent;
         this.runtime = runtime;
@@ -105,9 +111,12 @@ public class JimiEngine implements Engine {
         this.wire = wire;
         this.compaction = compaction;
         this.isSubagent = isSubagent;
+        this.skillMatcher = skillMatcher;
+        this.skillProvider = skillProvider;
         
-        // 创建执行器（传入isSubagent标记）
-        this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction, isSubagent);
+        // 创建执行器（传入isSubagent标记和Skill组件）
+        this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction, 
+                isSubagent, skillMatcher, skillProvider);
         
         // 设置 Approval 事件转发
         runtime.getApproval().asFlux().subscribe(wire::send);
