@@ -44,7 +44,7 @@ public class WorkDirMetadata {
      * 获取会话存储目录
      */
     public Path getSessionsDir() {
-        // 使用工作目录路径的哈希值作为子目录名
+        // 使用工作目录路径的哈希值作为子目录名 在user.home统一管理
         String dirHash = Integer.toHexString(path.hashCode());
         return Paths.get(System.getProperty("user.home"), ".jimi", "sessions", dirHash);
     }

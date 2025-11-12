@@ -23,11 +23,11 @@
 - **🧩 极致模块化**：像搭乐高一样组合功能，每个模块职责明确，易于扩展
 - **💡 知识注入**：灵活的Skills系统，让AI可以按需获取领域专业知识
 
-## 第一章：架构之美——分层设计的智慧
+## 第一章：架构之道——分层是银弹
 
 ### 1.1 从"积木"的角度理解Jimi
 
-想象一下，如果要建造一座智能大厦，我们需要什么？首先是坚实的地基（基础设施），然后是稳定的骨架（核心引擎），再是灵活的功能模块（Agent和工具），最后是友好的交互界面（UI）。Jimi的架构设计正是遵循了这样的思路：
+如果要建造一座智能大厦，我们需要什么？首先是坚实的地基（基础设施），然后是稳定的骨架（核心引擎），再是灵活的功能模块（Agent和工具），最后是友好的交互界面（UI）。Jimi的架构设计正是遵循了这样的思路：
 
 ```mermaid
 graph TB
@@ -118,7 +118,7 @@ Jimi共包含8个核心功能域，每个域都有明确的职责边界：
 | **会话管理** | `Session`<br/>`Context` | 上下文持久化 | 检查点机制，智能压缩 |
 | **UI交互** | `ShellUI`<br/>`OutputFormatter` | 命令行界面 | JLine3，彩色输出 |
 
-## 第二章：核心引擎——Agent执行的"心脏"
+## 第二章：核心引擎——Agent执行主逻辑
 
 ### 2.1 设计理念：委托与解耦
 
@@ -243,7 +243,7 @@ public class AgentExecutor {
 3. **消息总线解耦**：通过`Wire`发送事件，UI层无需直接耦合
 4. **智能循环控制**：支持最大步数限制、连续无工具调用检测
 
-### 2.3 流式响应处理的精妙设计
+### 2.3 流式响应处理的设计
 
 LLM的流式响应（Streaming）是提升用户体验的关键。Jimi采用了**累加器模式**来处理流式数据：
 
@@ -294,7 +294,7 @@ private StreamAccumulator processStreamChunk(StreamAccumulator acc, ChatCompleti
 - **容错机制**：处理LLM可能先发送arguments、后发送id的异常情况
 - **临时ID策略**：当收到参数但没有ID时，创建临时ID确保数据不丢失
 
-## 第三章：Agent系统——专业分工的协作之道
+## 第三章：Agent系统——SubAgent的分工协作
 
 ### 3.1 多Agent协作架构
 
@@ -456,8 +456,32 @@ public class AgentRegistry {
 - **模板化**：支持参数替换，动态注入上下文信息
 - **可扩展**：新增Agent只需添加配置文件
 
-## 第四章：工具系统——能力的"瑞士军刀"
+## 第四章：工具系统——能力的扩展
 
+```mermaid
+mindmap
+  root((工具系统))
+    文件操作工具
+      ReadFile 读取文件
+      WriteFile 写入文件
+      StrReplaceFile 字符串替换
+      ListDir 列出目录
+      SearchFile 搜索文件
+      GrepFile 正则搜索
+    命令执行工具
+      Bash Shell命令执行
+    网络工具
+      FetchURL HTTP请求
+      WebSearch 网页搜索
+    辅助工具
+      Think 思考记录
+      SetTodoList 待办事项
+      Task 任务管理
+    MCP集成工具
+      MCPToolProvider MCP协议支持
+      外部服务集成
+      自定义工具服务器
+```
 ### 4.1 工具注册与执行架构
 
 Jimi的工具系统采用**注册表模式**，支持工具的动态注册和执行：
@@ -651,7 +675,7 @@ public class LLMFactory {
 - **环境变量覆盖**：支持通过环境变量配置API Key，提升安全性
 - **Fail-fast验证**：启动时验证配置，避免运行时错误
 
-## 第六章：Skills系统——领域知识的智能注入
+## 第六章：Skills系统——领域知识的动态注入
 
 ### 6.1 Skills系统的设计哲学
 
@@ -737,7 +761,7 @@ content: |
   - [ ] 资源正确关闭
 ```
 
-### 6.3 智能匹配算法
+### 6.3 智能匹配
 
 `SkillMatcher`实现了基于关键词的智能匹配：
 
@@ -813,7 +837,7 @@ public class SkillMatcher {
 }
 ```
 
-### 6.4 知识注入流程
+### 6.4 知识注入
 
 `SkillProvider`负责将匹配的Skills注入到上下文：
 
@@ -978,7 +1002,7 @@ public class HttpJsonRpcClient implements JsonRpcClient {
 }
 ```
 
-## 第八章：消息总线Wire——组件解耦的利器
+## 第八章：消息总线Wire——组件解耦
 
 ### 8.1 Wire的设计理念
 
@@ -1352,8 +1376,8 @@ Jimi项目不仅仅是一个AI代理工具，更是一次对"用Java做AI"的深
 
 ### 项目信息
 
-- **GitHub仓库**：[https://github.com/your-repo/jimi](https://github.com/your-repo/jimi)
-- **文档中心**：项目根目录`.qoder/repowiki/`
+- **GitHub仓库**：[https://github.com/Leavesfly/Jimi](https://github.com/Leavesfly/Jimi)
+- **文档中心**：项目根目录`docs`
 - **技术讨论**：GitHub Discussions
 - **问题反馈**：GitHub Issues
 
@@ -1369,10 +1393,10 @@ Jimi项目不仅仅是一个AI代理工具，更是一次对"用Java做AI"的深
 
 ---
 
-**让我们一起，用Java打造属于Java开发者的AI未来！** 🚀
+***让我们一起，用Java打造属于Java开发者的AI未来！*** 🚀
 ---
 
-*关于作者：山泽，AI技术爱好者，Jimi项目发起人。致力于推动Java在AI领域的发展，让更多Java开发者能够轻松踏入AI的世界。*
+*关于作者：山泽，AI技术爱好者，Jimi项目发起人。致力于推动Java在AI领域的发展，让更多Java开发者能够踏入AI的世界。*
 
 *如果您对Jimi项目感兴趣，欢迎访问GitHub仓库，参与开源贡献，共同建设Java AI生态！*
 > 如果觉得这篇文章对你有帮助，请给Jimi项目一个⭐Star，让更多Java开发者看到！
