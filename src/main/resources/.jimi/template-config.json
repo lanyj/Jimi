@@ -65,7 +65,7 @@
     }
   },
   "loop_control": {
-    "max_steps_per_run": 30,
-    "max_retries_per_step": 10
+    "max_steps_per_run": 100,
+    "max_retries_per_step": 3
   }
 }
