@@ -214,10 +214,10 @@ public class AgentExecutor {
             return Mono.empty();
         });
     }
-    
+
     /**
      * 匹配和注入 Skills（如果启用）
-     * 
+     *
      * @param stepNo 当前步骤号
      * @return 完成的 Mono
      */
@@ -226,19 +226,19 @@ public class AgentExecutor {
         if (skillMatcher == null || skillProvider == null) {
             return Mono.empty();
         }
-        
+
         // 只在第一步执行 Skill 匹配（基于用户输入）
         // 后续步骤可以基于上下文进行动态匹配
         if (stepNo == 1) {
             return matchSkillsFromUserInput();
         }
-        
+
         // TODO: 后续可以添加基于上下文的动态 Skill 匹配
         // return matchSkillsFromContext();
-        
+
         return Mono.empty();
     }
-    
+
     /**
      * 从用户输入匹配 Skills
      */
@@ -249,7 +249,7 @@ public class AgentExecutor {
             if (history.isEmpty()) {
                 return Mono.empty();
             }
-            
+
             // 从最后一条用户消息中提取内容
             Message lastMessage = history.get(history.size() - 1);
             if (lastMessage.getRole() != MessageRole.USER) {
@@ -261,29 +261,29 @@ public class AgentExecutor {
                     }
                 }
             }
-            
+
             // 如果没找到用户消息，跳过
             if (lastMessage.getRole() != MessageRole.USER) {
                 return Mono.empty();
             }
-            
+
             // 提取内容部分
             List<ContentPart> contentParts = lastMessage.getContentParts();
             if (contentParts.isEmpty()) {
                 return Mono.empty();
             }
-            
+
             // 匹配 Skills
             List<SkillSpec> matchedSkills = skillMatcher.matchFromInput(contentParts);
-            
+
             if (matchedSkills.isEmpty()) {
                 log.debug("No skills matched from user input");
                 return Mono.empty();
             }
-            
+
             // 发送 Wire 消息
             wire.send(SkillsActivated.from(matchedSkills));
-            
+
             // 注入 Skills
             return skillProvider.injectSkills(context, matchedSkills);
         });
@@ -502,7 +502,7 @@ public class AgentExecutor {
      */
     private void initializeTempToolCallContext(StreamAccumulator acc, String firstArgumentsDelta) {
         String tempId = "temp_" + System.nanoTime() + "_" + Thread.currentThread().getId();
-        
+
         log.warn("收到argumentsDelta但currentToolCallId为null，创建临时上下文: id={}, argumentsDelta长度: {}",
                 tempId, firstArgumentsDelta.length());
         log.debug("临时上下文的首个argumentsDelta: {}", firstArgumentsDelta);
@@ -546,14 +546,14 @@ public class AgentExecutor {
         String content = acc.contentBuilder.toString();
         int contentLength = content.length();
         int toolCallsCount = acc.toolCalls.size();
-        
+
         // 简化日志，避免打印过长内容
         log.info("构建Assistant消息: content_length={}, toolCalls_count={}", contentLength, toolCallsCount);
-        
+
         // 详细内容使用 debug 级别
         if (log.isDebugEnabled() && contentLength > 0) {
-            String contentPreview = contentLength > 100 
-                    ? content.substring(0, 100) + "... (截断)" 
+            String contentPreview = contentLength > 100
+                    ? content.substring(0, 100) + "... (截断)"
                     : content;
             log.debug("Assistant内容预览: {}", contentPreview);
         }
@@ -604,19 +604,6 @@ public class AgentExecutor {
         // 执行所有工具调用（简化日志，避免打印超长JSON）
         List<ToolCall> toolCalls = assistantMessage.getToolCalls();
         log.info("准备执行 {} 个工具调用", toolCalls.size());
-        
-        // 详细日志使用 debug 级别，并对每个工具调用单独记录
-        if (log.isDebugEnabled()) {
-            for (int i = 0; i < toolCalls.size(); i++) {
-                ToolCall tc = toolCalls.get(i);
-                String argsPreview = tc.getFunction().getArguments();
-                if (argsPreview != null && argsPreview.length() > 200) {
-                    argsPreview = argsPreview.substring(0, 200) + "... (截断，总长度: " + argsPreview.length() + ")";
-                }
-                log.debug("工具调用 #{}: id={}, function={}, args={}", 
-                        i + 1, tc.getId(), tc.getFunction().getName(), argsPreview);
-            }
-        }
 
         return executeToolCalls(toolCalls)
                 .then(Mono.just(false)); // 继续循环

@@ -1,6 +1,6 @@
 # Jimi：打造Java程序员专属的开源ClaudeCode
 
-> 一个基于AI的CLI智能代理，专为软件开发场景设计
+> 一个完全用Java实现的AI驱动CLI智能代理系统，为Java开发者带来可深度定制的类ClaudeCode开源。
 
 [![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://www.oracle.com/java/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen.svg)](https://spring.io/projects/spring-boot)

@@ -110,8 +110,6 @@ public class ToolRegistry {
 
                 Object params = objectMapper.readValue(effectiveArguments, tool.getParamsType());
 
-//                // 记录解析成功的参数对象
-//                log.debug("Parsed parameters for {}: {}", toolName, params);
 
                 // 执行工具（使用原始类型）
                 return executeToolUnchecked(tool, params);
@@ -239,9 +237,6 @@ public class ToolRegistry {
 
         function.set("parameters", parameters);
         schema.set("function", function);
-
-//        // 记录生成的 schema 以便调试
-//        log.debug("Generated schema for tool {}: {}", tool.getName(), schema.toPrettyString());
 
         return schema;
     }

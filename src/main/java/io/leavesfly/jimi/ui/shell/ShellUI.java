@@ -1,6 +1,8 @@
 package io.leavesfly.jimi.ui.shell;
 
 import io.leavesfly.jimi.engine.JimiEngine;
+import io.leavesfly.jimi.engine.approval.ApprovalRequest;
+import io.leavesfly.jimi.engine.approval.ApprovalResponse;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -216,6 +218,9 @@ public class ShellUI implements AutoCloseable {
                 toolVisualization.onToolCallComplete(toolCallId, result);
 
                 activeTools.remove(toolCallId);
+            } else if (message instanceof ApprovalRequest approvalRequest) {
+                // 处理审批请求
+                handleApprovalRequest(approvalRequest);
             }
         } catch (Exception e) {
             log.error("Error handling wire message", e);
@@ -508,6 +513,65 @@ public class ShellUI implements AutoCloseable {
      */
     public void stop() {
         running.set(false);
+    }
+
+    /**
+     * 处理审批请求
+     * 显示审批提示并等待用户输入
+     */
+    private void handleApprovalRequest(ApprovalRequest request) {
+        try {
+            // 如果有助手输出，先换行
+            if (assistantOutputStarted.getAndSet(false)) {
+                terminal.writer().println();
+                terminal.flush();
+            }
+
+            // 打印审批请求
+            outputFormatter.println("");
+            outputFormatter.printStatus("\u26a0\ufe0f  需要审批:");
+            outputFormatter.printInfo("  操作类型: " + request.getAction());
+            outputFormatter.printInfo("  操作描述: " + request.getDescription());
+            outputFormatter.println("");
+
+            // 读取用户输入
+            String prompt = new AttributedString("\u2753 是否批准？[y/n/a] (y=批准, n=拒绝, a=本次会话全部批准): ",
+                    AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
+                    .toAnsi();
+
+            String response = lineReader.readLine(prompt).trim().toLowerCase();
+
+            // 解析响应
+            ApprovalResponse approvalResponse;
+            switch (response) {
+                case "y":
+                case "yes":
+                    approvalResponse = ApprovalResponse.APPROVE;
+                    outputFormatter.printSuccess("\u2705 已批准");
+                    break;
+                case "a":
+                case "all":
+                    approvalResponse = ApprovalResponse.APPROVE_FOR_SESSION;
+                    outputFormatter.printSuccess("\u2705 已批准（本次会话全部同类操作）");
+                    break;
+                case "n":
+                case "no":
+                default:
+                    approvalResponse = ApprovalResponse.REJECT;
+                    outputFormatter.printError("\u274c 已拒绝");
+                    break;
+            }
+
+            outputFormatter.println("");
+
+            // 发送响应
+            request.resolve(approvalResponse);
+
+        } catch (Exception e) {
+            log.error("Error handling approval request", e);
+            // 发生错误时默认拒绝
+            request.resolve(ApprovalResponse.REJECT);
+        }
     }
 
     @Override
