@@ -49,7 +49,6 @@ import java.util.List;
 @Slf4j
 public class AgentExecutor {
 
-    private static final int RESERVED_TOKENS = 50_000;
     private static final int MAX_THINKING_STEPS = 5; // 最大连续思考步数(无工具调用)
 
     private final Agent agent;
@@ -185,7 +184,7 @@ public class AgentExecutor {
             int maxContextSize = llm.getMaxContextSize();
 
             // 检查是否需要压缩（Token 数超过限制 - 预留Token）
-            if (currentTokens > maxContextSize - RESERVED_TOKENS) {
+            if (currentTokens > maxContextSize - EngineConstants.RESERVED_TOKENS) {
                 log.info("Context size ({} tokens) approaching limit ({} tokens), triggering compaction",
                         currentTokens, maxContextSize);
 

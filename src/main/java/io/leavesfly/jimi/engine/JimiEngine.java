@@ -41,8 +41,6 @@ import java.util.Map;
 @Slf4j
 public class JimiEngine implements Engine {
 
-    private static final int RESERVED_TOKENS = 50_000;
-
     private final Agent agent;
     private final Runtime runtime;
     private final Context context;
@@ -167,10 +165,10 @@ public class JimiEngine implements Engine {
         if (llm != null) {
             int maxContextSize = llm.getMaxContextSize();
             int used = context.getTokenCount();
-            int available = Math.max(0, maxContextSize - RESERVED_TOKENS - used);
+            int available = Math.max(0, maxContextSize - EngineConstants.RESERVED_TOKENS - used);
             double usagePercent = maxContextSize > 0 ? (used * 100.0 / maxContextSize) : 0.0;
             status.put("maxContextSize", maxContextSize);
-            status.put("reservedTokens", RESERVED_TOKENS);
+            status.put("reservedTokens", EngineConstants.RESERVED_TOKENS);
             status.put("availableTokens", available);
             status.put("contextUsagePercent", Math.round(usagePercent * 100.0) / 100.0);
         }
