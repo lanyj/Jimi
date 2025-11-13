@@ -31,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.Disposable;
 
@@ -248,7 +249,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 返回 Mono 以支持响应式编程
      */
     private Mono<Void> loadSubagents() {
-        return reactor.core.publisher.Flux.fromIterable(subagentSpecs.entrySet())
+        return Flux.fromIterable(subagentSpecs.entrySet())
                 .flatMap(entry -> {
                     String name = entry.getKey();
                     SubagentSpec spec = entry.getValue();
