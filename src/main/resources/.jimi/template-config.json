@@ -1,10 +1,10 @@
 {
-  "default_model": "qwen-max",
+  "default_model": "qwen3-max",
   "providers": {
     "qwen": {
       "type": "qwen",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key": "xxxx",
+      "api_key": "XXXX",
       "custom_headers": {}
     },
     "ollama": {
@@ -12,25 +12,37 @@
       "base_url": "http://localhost:11434/v1",
       "api_key": "",
       "custom_headers": {}
-    },
-    "claude": {
-      "type": "claude",
-      "base_url": "https://api.anthropic.com/v1",
-      "api_key": "xxxx",
-      "custom_headers": {
-        "anthropic-version": "2023-06-01"
-      }
     }
   },
   "models": {
+    "qwen3-max": {
+      "provider": "qwen",
+      "model": "qwen3-max",
+      "max_context_size": 200000
+    },
+    "qwen-plus-latest": {
+      "provider": "qwen",
+      "model": "qwen-plus-latest",
+      "max_context_size": 200000
+    },
     "qwen-max": {
       "provider": "qwen",
       "model": "qwen-max",
       "max_context_size": 200000
     },
-    "qwen3-Coder-Plus": {
+    "qwen3-coder-plus": {
       "provider": "qwen",
-      "model": "qwen3-Coder-Plus",
+      "model": "qwen3-coder-plus",
+      "max_context_size": 200000
+    },
+    "qwen3-coder-flash": {
+      "provider": "qwen",
+      "model": "qwen3-coder-flash",
+      "max_context_size": 200000
+    },
+    "deepseek-v3.2-exp": {
+      "provider": "qwen",
+      "model": "deepseek-v3.2-exp",
       "max_context_size": 200000
     },
     "Moonshot-Kimi-K2-Instruct": {
@@ -41,27 +53,12 @@
     "qwen3:4b-instruct-2507-q8_0": {
       "provider": "ollama",
       "model": "qwen3:4b-instruct-2507-q8_0",
-      "max_context_size": 8000
+      "max_context_size": 100000
     },
     "qwen3:4b-thinking-2507-q8_0": {
       "provider": "ollama",
       "model": "qwen3:4b-thinking-2507-q8_0",
-      "max_context_size": 8000
-    },
-    "claude-3-5-sonnet-20241022": {
-      "provider": "claude",
-      "model": "claude-3-5-sonnet-20241022",
-      "max_context_size": 200000
-    },
-    "claude-3-5-haiku-20241022": {
-      "provider": "claude",
-      "model": "claude-3-5-haiku-20241022",
-      "max_context_size": 200000
-    },
-    "claude-3-opus-20240229": {
-      "provider": "claude",
-      "model": "claude-3-opus-20240229",
-      "max_context_size": 200000
+      "max_context_size": 100000
     }
   },
   "loop_control": {
