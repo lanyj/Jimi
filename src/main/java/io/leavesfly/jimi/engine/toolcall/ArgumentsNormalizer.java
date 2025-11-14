@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.engine.toolcall;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,8 +51,11 @@ public class ArgumentsNormalizer {
 
         // 步骤 0: 先校验是否已经是合法的 JSON，是的话直接返回
         if (isStrictValidJson(normalized, objectMapper)) {
+            log.debug("Input is already valid JSON, returning as-is: {}", normalized);
             return normalized;
         }
+        
+        log.debug("Input is not valid JSON, proceeding with normalization: {}", normalized);
 
         // 步骤 1: 移除前后多余的 null
         normalized = removeNullPrefix(normalized);
@@ -81,27 +85,50 @@ public class ArgumentsNormalizer {
 
     /**
      * 严格校验是否为合法的 JSON 字符串
-     * 注意：Jackson 的 objectMapper.readTree() 只会解析第一个 JSON 结构，
-     * 对于 "{...}null" 这样的字符串也会返回成功，因为它成功解析了前面的 {}。
-     * 这个方法会确保整个字符串都是合法的 JSON，不允许有多余的后缀。
+     * 
+     * 为什么不能用 readValue()？
+     * - readValue() 只能检测整个字符串是否为合法JSON
+     * - 但对于 {"a":1}null 这种情况，readValue() 会直接抛异常，无法区分是“完全非法”还是“有后缀”
+     * 
+     * 为什么用 readTree() + parser.nextToken()？
+     * - readTree() 可以“部分解析”，读到第一个完整的JSON结构就停止
+     * - parser.nextToken() 可以检查是否还有未消费的token（如后缀 null）
+     * - 这样就能区分：
+     *   - {"a":1} → 合法✅
+     *   - {"a":1}null → 有后缀，需要标准化⚠️
+     *   - invalid → 完全非法，需要标准化❌
+     * 
+     * 特殊处理：
+     * - 如果解析结果是一个字符串值，且该字符串看起来像 JSON，则还需要继续标准化
+     * - 例如："{...}" 是合法的JSON字符串值，但我们需要解包成真正的JSON对象
      *
      * @param json         待校验的字符串
      * @param objectMapper Jackson ObjectMapper 实例
-     * @return 是否为严格的合法 JSON
+     * @return 是否为严格的合法 JSON（且不需要进一步标准化）
      */
     private static boolean isStrictValidJson(String json, ObjectMapper objectMapper) {
         try {
             JsonParser parser = objectMapper.getFactory().createParser(json);
-            objectMapper.readTree(parser);
+            JsonNode node = objectMapper.readTree(parser);
             
             // 检查是否还有多余的内容（如后缀 null）
-            // 如果能继续读取到 token，说明有多余内容
             if (parser.nextToken() != null) {
                 log.debug("JSON has extra content after main structure: {}", json);
                 return false;
             }
             
-            // 整个字符串都是合法的 JSON
+            // 如果解析结果是一个字符串值，且该字符串看起来像 JSON，则还需要继续处理
+            if (node.isTextual()) {
+                String textValue = node.asText();
+                // 如果字符串值以 { 或 [ 开头，可能是被引号包裹的 JSON
+                if (textValue.trim().startsWith("{") || textValue.trim().startsWith("[")) {
+                    log.debug("JSON is a string value containing JSON-like content, needs normalization: {}", json);
+                    return false;
+                }
+            }
+            
+            // 整个字符串都是合法的 JSON，且不需要进一步处理
+            log.debug("JSON is strictly valid: {}", json);
             return true;
         } catch (Exception e) {
             // 不是合法的 JSON，继续执行标准化流程
@@ -113,54 +140,115 @@ public class ArgumentsNormalizer {
 
     /**
      * 移除开头的 null（循环处理多个连续的null）
+     * 策略：先移除所有开头的 null，然后验证剩余部分是否为有效的 JSON 结构
      */
     private static String removeNullPrefix(String input) {
         String trimmed = input.trim();
         String original = trimmed;
-        boolean removed = false;
         
+        // 先循环移除所有开头的 "null" 字符串
         while (trimmed.startsWith("null")) {
-            String afterNull = trimmed.substring(4).trim();
-            // 验证后面是否为有效的JSON结构
-            if (afterNull.startsWith("{") || afterNull.startsWith("[") || 
-                    (afterNull.startsWith("\"") && afterNull.length() > 2)) {
-                trimmed = afterNull;
-                removed = true;
+            trimmed = trimmed.substring(4).trim();
+        }
+        
+        // 如果确实移除了 null
+        if (!trimmed.equals(original)) {
+            // 验证剩余部分是否为有效的 JSON 结构
+            if (trimmed.startsWith("{") || trimmed.startsWith("[") || 
+                    (trimmed.startsWith("\"") && trimmed.length() > 2)) {
+                log.warn("Removed 'null' prefix from arguments: {} -> {}", original, trimmed);
+                return trimmed;
             } else {
-                break;
+                // 移除 null 后不是有效的 JSON 结构，恢复原值
+                log.debug("After removing null prefix, remaining part is not valid JSON structure, keep original: {}", original);
+                return original;
             }
         }
         
-        if (removed) {
-            log.warn("Removed 'null' prefix from arguments: {} -> {}", original, trimmed);
-        }
         return trimmed;
     }
 
     /**
      * 移除末尾的 null（循环处理多个连续的null）
+     * 策略：
+     * 1. 先循环移除所有外层的 null 后缀
+     * 2. 检查是否被引号包裹，如果是且内部以null结尾，则移除引号并继续处理
+     * 3. 再次循环移除所有末尾的 null
+     * 4. 验证剩余部分是否为有效的 JSON 结构
      */
     private static String removeNullSuffix(String input) {
         String trimmed = input.trim();
         String original = trimmed;
-        boolean removed = false;
+        log.debug("removeNullSuffix input: {}", trimmed);
         
+        // 第一轮：循环移除外层所有末尾的 "null" 字符串
         while (trimmed.endsWith("null")) {
-            String beforeNull = trimmed.substring(0, trimmed.length() - 4).trim();
-            // 验证前面是否为完整的JSON结构
-            if ((beforeNull.startsWith("{") && beforeNull.endsWith("}")) ||
-                    (beforeNull.startsWith("[") && beforeNull.endsWith("]")) ||
-                    (beforeNull.startsWith("\"") && beforeNull.endsWith("\"") && beforeNull.length() > 2)) {
-                trimmed = beforeNull;
-                removed = true;
-            } else {
-                break;
+            trimmed = trimmed.substring(0, trimmed.length() - 4).trim();
+        }
+        
+        // 第二轮：如果被引号包裹，检查去掉引号后是否以 null 结尾
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length() > 2) {
+            String withoutQuotes = trimmed.substring(1, trimmed.length() - 1);
+            if (withoutQuotes.endsWith("null")) {
+                // 移除引号，继续处理
+                trimmed = withoutQuotes;
+                log.debug("Removed outer quotes before null suffix processing: {} -> {}", original, trimmed);
+                
+                // 第三轮：再次循环移除所有末尾的 "null" 字符串
+                while (trimmed.endsWith("null")) {
+                    trimmed = trimmed.substring(0, trimmed.length() - 4).trim();
+                }
+                
+                // 第四轮：清理可能残留的末尾引号
+                // 场景1: "{...}"null"null -> {...}"  (多余的末尾引号)
+                // 场景2: "{...}"null"null -> {...}"  (末尾是转义引号)
+                while (trimmed.endsWith("\"")) {
+                    // 去掉末尾引号
+                    String withoutTrailingQuote = trimmed.substring(0, trimmed.length() - 1);
+                    
+                    // 检查去掉引号后是否是有效的JSON结构
+                    if ((withoutTrailingQuote.startsWith("{") && withoutTrailingQuote.endsWith("}")) ||
+                            (withoutTrailingQuote.startsWith("[") && withoutTrailingQuote.endsWith("]"))) {
+                        trimmed = withoutTrailingQuote;
+                        log.debug("Removed trailing quote after null removal: {}", trimmed);
+                    } else {
+                        break; // 不是有效结构,保留引号
+                    }
+                }
+                
+                // 第五轮：清理可能残留的转义引号
+                // 场景: "{...}"null"null -> {...}"  (末尾是转义引号)
+                while (trimmed.endsWith("\\\"")) {
+                    // 去掉末尾转义引号
+                    String withoutTrailingQuote = trimmed.substring(0, trimmed.length() - 2);
+                    
+                    // 检查去掉引号后是否是有效的JSON结构
+                    if ((withoutTrailingQuote.startsWith("{") && withoutTrailingQuote.endsWith("}")) ||
+                            (withoutTrailingQuote.startsWith("[") && withoutTrailingQuote.endsWith("]"))) {
+                        trimmed = withoutTrailingQuote;
+                        log.debug("Removed trailing escaped quote after null removal: {}", trimmed);
+                    } else {
+                        break; // 不是有效结构,保留引号
+                    }
+                }
             }
         }
         
-        if (removed) {
-            log.warn("Removed 'null' suffix from arguments: {} -> {}", original, trimmed);
+        // 如果确实移除了 null
+        if (!trimmed.equals(original)) {
+            // 验证剩余部分是否为有效的 JSON 结构
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                    (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+                    (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length() > 2)) {
+                log.warn("Removed 'null' suffix from arguments: {} -> {}", original, trimmed);
+                return trimmed;
+            } else {
+                // 移除 null 后不是有效的 JSON 结构，恢复原值
+                log.debug("After removing null suffix, remaining part is not valid JSON structure, keep original: {}", original);
+                return original;
+            }
         }
+        
         return trimmed;
     }
 
@@ -473,10 +561,17 @@ public class ArgumentsNormalizer {
 
     /**
      * 安全的逗号分隔参数转换
+     * 注意：只有当输入不是合法 JSON 时，才尝试转换为逗号分隔参数
      */
     private static String convertCommaDelimitedToJsonSafe(String input) {
-        // 已经是有效的 JSON 格式
+        // 已经是有效的 JSON 格式（结构检查）
         if (input.startsWith("{") || input.startsWith("[")) {
+            return input;
+        }
+        
+        // 如果是被引号包裹的字符串，也可能是合法的 JSON 字符串值
+        // 不应该被当作逗号分隔参数处理
+        if (input.startsWith("\"") && input.endsWith("\"") && input.length() > 2) {
             return input;
         }
 

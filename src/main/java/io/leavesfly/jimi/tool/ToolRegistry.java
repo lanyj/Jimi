@@ -101,12 +101,12 @@ public class ToolRegistry {
             String effectiveArguments = "";
             try {
 
-                log.debug("Parsed parameters before for {}: {}", toolName, arguments);
+                log.info("Parsed parameters before for {}: {}", toolName, arguments);
 
                 // 将参数转成标准的json格式
                 effectiveArguments = ArgumentsNormalizer.normalizeToValidJson(arguments, objectMapper);
 
-                log.debug("Parsed parameters after for {}: {}", toolName, effectiveArguments);
+                log.info("Parsed parameters after for {}: {}", toolName, effectiveArguments);
 
                 Object params = objectMapper.readValue(effectiveArguments, tool.getParamsType());
 
