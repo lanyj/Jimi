@@ -14,7 +14,7 @@ import io.leavesfly.jimi.engine.runtime.Runtime;
 import io.leavesfly.jimi.skill.SkillMatcher;
 import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
-import io.leavesfly.jimi.tool.WireAware;
+import io.leavesfly.jimi.wire.WireAware;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;

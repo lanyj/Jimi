@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool;
+package io.leavesfly.jimi.wire;
 
 import io.leavesfly.jimi.wire.Wire;
 

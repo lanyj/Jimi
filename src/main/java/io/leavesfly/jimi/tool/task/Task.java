@@ -20,7 +20,7 @@ import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.tool.WireAware;
+import io.leavesfly.jimi.wire.WireAware;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
