@@ -30,6 +30,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class ToolVisualization {
     
+    // 配置常量
+    private static final int MAX_SUBTITLE_LENGTH = 60;  // 副标题最大长度
+    private static final int MAX_BRIEF_LENGTH = 100;     // 结果摘要最大长度
+    
     private final Map<String, ToolCallDisplay> activeTools = new HashMap<>();
     private final AtomicBoolean enabled = new AtomicBoolean(true);
     
@@ -185,10 +189,11 @@ public class ToolVisualization {
             System.out.print("\r\033[K");  // 清除当前行
             System.out.println(display.render());
             
-            // 显示结果摘要
+            // 显示结果摘要（截取过长的摘要）
             if (result.getBrief() != null && !result.getBrief().isEmpty()) {
                 String style = result.isOk() ? AnsiColors.GRAY : AnsiColors.RED;
-                System.out.println("  " + style + result.getBrief() + AnsiColors.RESET);
+                String brief = truncateText(result.getBrief(), MAX_BRIEF_LENGTH);
+                System.out.println("  " + style + brief + AnsiColors.RESET);
             }
             
             // 从活动列表中移除
@@ -240,16 +245,88 @@ public class ToolVisualization {
             java.util.regex.Matcher m = p.matcher(json);
             if (m.find()) {
                 String value = m.group(1);
-                // 限制长度
-                if (value.length() > 50) {
-                    value = value.substring(0, 47) + "...";
-                }
-                return value;
+                return truncateText(value, MAX_SUBTITLE_LENGTH);
             }
         } catch (Exception e) {
             log.trace("Failed to extract field {} from JSON", fieldName, e);
         }
         return null;
+    }
+    
+    /**
+     * 智能截取文本
+     * - 优先在单词边界截断（英文）
+     * - 优先在标点符号处截断（中文）
+     * - 保持路径的关键部分可见
+     */
+    private String truncateText(String text, int maxLength) {
+        if (text == null || text.length() <= maxLength) {
+            return text;
+        }
+        
+        // 对于路径，优先保留文件名
+        if (text.contains("/") || text.contains("\\")) {
+            return truncatePath(text, maxLength);
+        }
+        
+        // 对于普通文本，智能截断
+        return truncateNormalText(text, maxLength);
+    }
+    
+    /**
+     * 截取路径，优先保留文件名
+     */
+    private String truncatePath(String path, int maxLength) {
+        if (path.length() <= maxLength) {
+            return path;
+        }
+        
+        // 分离目录和文件名
+        int lastSep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        if (lastSep > 0) {
+            String filename = path.substring(lastSep + 1);
+            String dir = path.substring(0, lastSep);
+            
+            // 如果文件名本身就太长，直接截断
+            if (filename.length() >= maxLength - 5) {
+                return "..." + filename.substring(filename.length() - (maxLength - 3));
+            }
+            
+            // 否则保留文件名，缩短目录部分
+            int remainingLength = maxLength - filename.length() - 4; // 4 = "..." + "/"
+            if (remainingLength > 0 && dir.length() > remainingLength) {
+                return dir.substring(0, remainingLength) + ".../" + filename;
+            } else if (remainingLength <= 0) {
+                return "..." + filename;
+            }
+        }
+        
+        // 如果没有分隔符，直接从末尾截取
+        return "..." + path.substring(path.length() - (maxLength - 3));
+    }
+    
+    /**
+     * 截取普通文本，尽量在合适的位置断开
+     */
+    private String truncateNormalText(String text, int maxLength) {
+        int cutPoint = maxLength - 3; // 留出 "..." 的空间
+        
+        // 尝试在空格处截断
+        int lastSpace = text.lastIndexOf(' ', cutPoint);
+        if (lastSpace > cutPoint - 10 && lastSpace > 0) {
+            return text.substring(0, lastSpace) + "...";
+        }
+        
+        // 尝试在标点符号处截断
+        String punctuation = ",.;:!?，。；：！？";
+        for (int i = cutPoint; i >= cutPoint - 10 && i >= 0; i--) {
+            if (punctuation.indexOf(text.charAt(i)) >= 0) {
+                return text.substring(0, i + 1) + "...";
+            }
+        }
+        
+        // 否则直接截断
+        return text.substring(0, cutPoint) + "...";
     }
     
     /**

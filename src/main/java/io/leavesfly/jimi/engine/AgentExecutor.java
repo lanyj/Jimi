@@ -740,9 +740,14 @@ public class AgentExecutor {
     private Mono<Message> executeToolCall(ToolCall toolCall) {
         return Mono.defer(() -> {
             try {
+                // 发送工具调用开始消息到 Wire
+                wire.send(new ToolCallMessage(toolCall));
+                
                 ToolCallValidator.ValidationResult validation = toolCallValidator.validate(toolCall);
                 if (!validation.isValid()) {
                     log.error("Tool call validation failed: {}", validation.getErrorMessage());
+                    ToolResult errorResult = ToolResult.error(validation.getErrorMessage(), "Validation failed");
+                    wire.send(new ToolResultMessage(validation.getToolCallId(), errorResult));
                     return Mono.just(Message.tool(validation.getToolCallId(), validation.getErrorMessage()));
                 }
 
@@ -756,6 +761,8 @@ public class AgentExecutor {
                 log.error("Unexpected error in executeToolCall", e);
                 String errorToolCallId = (toolCall != null && toolCall.getId() != null)
                         ? toolCall.getId() : "unknown";
+                ToolResult errorResult = ToolResult.error("Internal error: " + e.getMessage(), "Execution error");
+                wire.send(new ToolResultMessage(errorToolCallId, errorResult));
                 return Mono.just(Message.tool(errorToolCallId,
                         "Internal error executing tool: " + e.getMessage()));
             }
@@ -768,9 +775,15 @@ public class AgentExecutor {
     private Mono<Message> executeValidToolCall(String toolName, String arguments,
                                                String toolCallId, String toolSignature) {
         return toolRegistry.execute(toolName, arguments)
+                .doOnNext(result -> {
+                    // 发送工具执行结果消息到 Wire
+                    wire.send(new ToolResultMessage(toolCallId, result));
+                })
                 .map(result -> convertToolResultToMessage(result, toolCallId, toolSignature))
                 .onErrorResume(e -> {
                     log.error("Tool execution failed: {}", toolName, e);
+                    ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
+                    wire.send(new ToolResultMessage(toolCallId, errorResult));
                     return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
                 });
     }
