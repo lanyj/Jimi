@@ -26,3 +26,4 @@ tools:
   - SearchWeb     # 搜索设计模式和最佳实践
   - FetchURL      # 获取参考资料
   - Think         # 设计思考和方案对比
+  - ask_human     # 人工确认：方案确认、获取用户反馈

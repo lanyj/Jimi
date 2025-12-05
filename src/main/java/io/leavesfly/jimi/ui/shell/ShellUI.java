@@ -3,6 +3,8 @@ package io.leavesfly.jimi.ui.shell;
 import io.leavesfly.jimi.engine.JimiEngine;
 import io.leavesfly.jimi.engine.approval.ApprovalRequest;
 import io.leavesfly.jimi.engine.approval.ApprovalResponse;
+import io.leavesfly.jimi.engine.interaction.HumanInputRequest;
+import io.leavesfly.jimi.engine.interaction.HumanInputResponse;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -233,6 +235,11 @@ public class ShellUI implements AutoCloseable {
                 log.info("[ShellUI] Received ApprovalRequest: action={}, description={}", 
                         approvalRequest.getAction(), approvalRequest.getDescription());
                 handleApprovalRequest(approvalRequest);
+            } else if (message instanceof HumanInputRequest humanInputRequest) {
+                // 处理人工交互请求
+                log.info("[ShellUI] Received HumanInputRequest: type={}, question={}",
+                        humanInputRequest.getInputType(), truncateForLog(humanInputRequest.getQuestion()));
+                handleHumanInputRequest(humanInputRequest);
             }
         } catch (Exception e) {
             log.error("Error handling wire message", e);
@@ -702,6 +709,137 @@ public class ShellUI implements AutoCloseable {
             // 发生错误时默认拒绝
             request.resolve(ApprovalResponse.REJECT);
         }
+    }
+
+    /**
+     * 处理人工交互请求
+     * 显示问题并等待用户输入
+     */
+    private void handleHumanInputRequest(HumanInputRequest request) {
+        try {
+            // 如果有助手输出，先换行
+            if (assistantOutputStarted.getAndSet(false)) {
+                terminal.writer().println();
+                terminal.flush();
+            }
+
+            // 打印问题
+            terminal.writer().println();
+            outputFormatter.printStatus("\ud83e\udd14 Agent 需要您的反馈:");
+            outputFormatter.printInfo(request.getQuestion());
+            terminal.writer().println();
+            terminal.flush();
+
+            HumanInputResponse response;
+
+            switch (request.getInputType()) {
+                case CONFIRM -> {
+                    // 确认型：满意/需要修改/拒绝
+                    String prompt = new AttributedString(
+                            "\u2753 请选择 [y=满意继续 / m=需要修改 / n=拒绝]: ",
+                            AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
+                            .toAnsi();
+                    String input = lineReader.readLine(prompt).trim().toLowerCase();
+
+                    response = switch (input) {
+                        case "y", "yes", "满意" -> {
+                            outputFormatter.printSuccess("\u2705 已确认");
+                            yield HumanInputResponse.approved();
+                        }
+                        case "m", "modify", "修改" -> {
+                            String modificationPrompt = new AttributedString(
+                                    "\ud83d\udcdd 请输入修改意见: ",
+                                    AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+                                    .toAnsi();
+                            String modification = lineReader.readLine(modificationPrompt);
+                            outputFormatter.printInfo("\ud83d\udcac 已记录修改意见");
+                            yield HumanInputResponse.needsModification(modification);
+                        }
+                        default -> {
+                            outputFormatter.printError("\u274c 已拒绝");
+                            yield HumanInputResponse.rejected();
+                        }
+                    };
+                }
+                case FREE_INPUT -> {
+                    // 自由输入型
+                    String defaultHint = request.getDefaultValue() != null
+                            ? " (默认: " + request.getDefaultValue() + ")"
+                            : "";
+                    String prompt = new AttributedString(
+                            "\ud83d\udcdd 请输入" + defaultHint + ": ",
+                            AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+                            .toAnsi();
+                    String input = lineReader.readLine(prompt).trim();
+                    if (input.isEmpty() && request.getDefaultValue() != null) {
+                        input = request.getDefaultValue();
+                    }
+                    outputFormatter.printInfo("\u2705 已记录输入");
+                    response = HumanInputResponse.inputProvided(input);
+                }
+                case CHOICE -> {
+                    // 选择型
+                    List<String> choices = request.getChoices();
+                    if (choices != null && !choices.isEmpty()) {
+                        outputFormatter.printInfo("请从以下选项中选择:");
+                        for (int i = 0; i < choices.size(); i++) {
+                            outputFormatter.printInfo("  " + (i + 1) + ". " + choices.get(i));
+                        }
+                        String prompt = new AttributedString(
+                                "\ud83d\udc49 请输入选项序号: ",
+                                AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+                                .toAnsi();
+                        String input = lineReader.readLine(prompt).trim();
+                        try {
+                            int index = Integer.parseInt(input) - 1;
+                            if (index >= 0 && index < choices.size()) {
+                                String selected = choices.get(index);
+                                outputFormatter.printSuccess("\u2705 已选择: " + selected);
+                                response = HumanInputResponse.inputProvided(selected);
+                            } else {
+                                outputFormatter.printError("\u274c 无效的选项序号");
+                                response = HumanInputResponse.rejected();
+                            }
+                        } catch (NumberFormatException e) {
+                            outputFormatter.printError("\u274c 请输入有效的序号");
+                            response = HumanInputResponse.rejected();
+                        }
+                    } else {
+                        outputFormatter.printError("\u274c 没有可用的选项");
+                        response = HumanInputResponse.rejected();
+                    }
+                }
+                default -> {
+                    outputFormatter.printError("\u274c 未知的输入类型");
+                    response = HumanInputResponse.rejected();
+                }
+            }
+
+            terminal.writer().println();
+            terminal.flush();
+
+            // 发送响应
+            request.resolve(response);
+
+            log.info("[ShellUI] Human input request resolved: {}", response.getStatus());
+
+        } catch (UserInterruptException e) {
+            // 用户按 Ctrl-C，默认拒绝
+            log.info("Human input interrupted by user");
+            outputFormatter.printError("\u274c 交互已取消");
+            request.resolve(HumanInputResponse.rejected());
+        } catch (Exception e) {
+            log.error("Error handling human input request", e);
+            request.resolve(HumanInputResponse.rejected());
+        }
+    }
+
+    /**
+     * 截断日志输出
+     */
+    private String truncateForLog(String text) {
+        if (text == null) return "null";
+        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
     }
 
     @Override
