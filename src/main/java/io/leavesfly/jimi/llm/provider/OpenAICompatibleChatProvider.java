@@ -267,13 +267,21 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("role", msg.getRole().getValue());
 
+        boolean hasContent = false;
+        boolean hasToolCalls = false;
+
         // 处理内容
         if (msg.getContent() instanceof String) {
-            node.put("content", (String) msg.getContent());
+            String content = (String) msg.getContent();
+            if (content != null && !content.isEmpty()) {
+                node.put("content", content);
+                hasContent = true;
+            }
         } else if (msg.getContent() instanceof List) {
             // 直接将 List 转换为 JsonNode，避免类型转换问题
             // Jackson 会自动处理 ContentPart 或 LinkedHashMap
             node.set("content", objectMapper.valueToTree(msg.getContent()));
+            hasContent = true;
         }
 
         // 处理工具调用 - 过滤无效的工具调用
@@ -289,7 +297,15 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
 
             if (!validToolCalls.isEmpty()) {
                 node.set("tool_calls", objectMapper.valueToTree(validToolCalls));
+                hasToolCalls = true;
             }
+        }
+
+        // 对于 assistant 消息，确保至少有 content 或 tool_calls
+        // 防止因过滤无效 tool_calls 后导致消息不完整，API 返回 "content field is required" 错误
+        if ("assistant".equals(msg.getRole().getValue()) && !hasContent && !hasToolCalls) {
+            node.put("content", "");
+            log.warn("Assistant message has neither content nor valid tool_calls, adding empty content");
         }
 
         // 处理工具调用ID
@@ -485,17 +501,31 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
 
             // 处理工具调用
             if (delta.has("tool_calls")) {
-                JsonNode toolCall = delta.get("tool_calls").get(0);
-                return ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.TOOL_CALL)
-                        .toolCallId(toolCall.has("id") ? toolCall.get("id").asText() : null)
-                        .functionName(toolCall.has("function") && toolCall.get("function").has("name")
-                                ? toolCall.get("function").get("name").asText()
-                                : null)
-                        .argumentsDelta(toolCall.has("function") && toolCall.get("function").has("arguments")
-                                ? toolCall.get("function").get("arguments").asText()
-                                : null)
-                        .build();
+                JsonNode toolCallsArray = delta.get("tool_calls");
+                if (toolCallsArray.isArray() && toolCallsArray.size() > 0) {
+                    JsonNode toolCall = toolCallsArray.get(0);
+                    
+                    String toolCallId = toolCall.has("id") ? toolCall.get("id").asText() : null;
+                    String functionName = null;
+                    String argumentsDelta = null;
+                    
+                    if (toolCall.has("function")) {
+                        JsonNode function = toolCall.get("function");
+                        if (function.has("name") && !function.get("name").isNull()) {
+                            functionName = function.get("name").asText();
+                        }
+                        if (function.has("arguments") && !function.get("arguments").isNull()) {
+                            argumentsDelta = function.get("arguments").asText();
+                        }
+                    }
+                    
+                    return ChatCompletionChunk.builder()
+                            .type(ChatCompletionChunk.ChunkType.TOOL_CALL)
+                            .toolCallId(toolCallId)
+                            .functionName(functionName)
+                            .argumentsDelta(argumentsDelta)
+                            .build();
+                }
             }
 
             // 默认返回空内容块

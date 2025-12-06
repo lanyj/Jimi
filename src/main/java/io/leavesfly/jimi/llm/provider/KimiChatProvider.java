@@ -175,10 +175,17 @@ public class KimiChatProvider implements ChatProvider {
     private JsonNode convertMessage(Message msg) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("role", msg.getRole().getValue());
+
+        boolean hasContent = false;
+        boolean hasToolCalls = false;
         
         // 处理内容
         if (msg.getContent() instanceof String) {
-            node.put("content", (String) msg.getContent());
+            String content = (String) msg.getContent();
+            if (content != null && !content.isEmpty()) {
+                node.put("content", content);
+                hasContent = true;
+            }
         } else if (msg.getContent() instanceof List) {
             @SuppressWarnings("unchecked")
             List<ContentPart> parts = (List<ContentPart>) msg.getContent();
@@ -187,6 +194,7 @@ public class KimiChatProvider implements ChatProvider {
                 contentArray.add(objectMapper.valueToTree(part));
             }
             node.set("content", contentArray);
+            hasContent = true;
         }
         
         // 处理工具调用
@@ -202,7 +210,15 @@ public class KimiChatProvider implements ChatProvider {
 
             if (!validToolCalls.isEmpty()) {
                 node.set("tool_calls", objectMapper.valueToTree(validToolCalls));
+                hasToolCalls = true;
             }
+        }
+
+        // 对于 assistant 消息，确保至少有 content 或 tool_calls
+        // 防止因过滤无效 tool_calls 后导致消息不完整，API 返回 "content field is required" 错误
+        if ("assistant".equals(msg.getRole().getValue()) && !hasContent && !hasToolCalls) {
+            node.put("content", "");
+            log.warn("Assistant message has neither content nor valid tool_calls, adding empty content");
         }
         
         // 处理工具调用ID

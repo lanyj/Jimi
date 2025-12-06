@@ -17,11 +17,15 @@ import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.AbstractTool;
+import io.leavesfly.jimi.tool.Tool;
+import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.wire.WireAware;
 import io.leavesfly.jimi.wire.Wire;
+import io.leavesfly.jimi.wire.message.SubagentCompleted;
+import io.leavesfly.jimi.wire.message.SubagentStarting;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -91,6 +95,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private final ObjectMapper objectMapper;
     private final AgentRegistry agentRegistry;
     private final ToolRegistryFactory toolRegistryFactory;
+    private final List<ToolProvider> toolProviders;
     private final Map<String, Agent> subagents;
     private Map<String, SubagentSpec> subagentSpecs;
 
@@ -131,12 +136,14 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     }
 
     @Autowired
-    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory) {
+    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, 
+                ToolRegistryFactory toolRegistryFactory, List<ToolProvider> toolProviders) {
         super("Task", "Task tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
         this.agentRegistry = agentRegistry;
         this.toolRegistryFactory = toolRegistryFactory;
+        this.toolProviders = toolProviders;
         this.subagents = new HashMap<>();
     }
 
@@ -319,7 +326,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
             try {
                 // 1. 发送 Subagent 启动事件（ReCAP 阶段 2）
                 if (parentWire != null) {
-                    parentWire.send(new io.leavesfly.jimi.wire.message.SubagentStarting(agent.getName(), prompt));
+                    parentWire.send(new SubagentStarting(agent.getName(), prompt));
                 }
                 
                 // 2. 子历史文件（基于子 Agent 名称）
@@ -329,7 +336,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 Context subContext = createSubContext(subHistoryFile);
 
                 // 4. 子工具注册表
-                ToolRegistry subToolRegistry = createSubToolRegistry();
+                ToolRegistry subToolRegistry = createSubToolRegistry(agent);
 
                 // 5. 子 JimiEngine
                 JimiEngine subSoul = createSubSoul(agent, subContext, subToolRegistry);
@@ -344,7 +351,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                             // 8. 发送 Subagent 完成事件（附带摘要，ReCAP 阶段 2）
                             if (parentWire != null) {
                                 String summary = result.getOutput();
-                                parentWire.send(new io.leavesfly.jimi.wire.message.SubagentCompleted(summary));
+                                parentWire.send(new SubagentCompleted(summary));
                             }
                         })
                         .doFinally(signalType -> {
@@ -372,12 +379,37 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
     /**
      * 创建子工具注册表
+     * 需要传入 subagent 的 AgentSpec 以正确应用 ToolProvider
      */
-    private ToolRegistry createSubToolRegistry() {
-        return toolRegistryFactory.createStandardRegistry(
+    private ToolRegistry createSubToolRegistry(Agent subagent) {
+        // 创建基础工具注册表
+        ToolRegistry registry = toolRegistryFactory.createStandardRegistry(
                 runtime.getBuiltinArgs(),
                 runtime.getApproval()
         );
+        
+        // 应用 ToolProvider SPI（如 HumanInteractionToolProvider）
+        // 为 subagent 创建一个基础的 AgentSpec（用于 ToolProvider 的 supports 检查）
+        AgentSpec subAgentSpec = AgentSpec.builder()
+                .name(subagent.getName())
+                .build();
+        toolProviders.stream()
+                .sorted(java.util.Comparator.comparingInt(ToolProvider::getOrder))
+                .filter(provider -> {
+                    // 跳过 TaskToolProvider，避免无限嵌套
+                    if (provider.getClass().getSimpleName().equals("TaskToolProvider")) {
+                        return false;
+                    }
+                    return provider.supports(subAgentSpec, runtime);
+                })
+                .forEach(provider -> {
+                    log.debug("Applying tool provider for subagent: {} (order={})", 
+                            provider.getName(), provider.getOrder());
+                    List<Tool<?>> tools = provider.createTools(subAgentSpec, runtime);
+                    tools.forEach(registry::register);
+                });
+        
+        return registry;
     }
 
     /**

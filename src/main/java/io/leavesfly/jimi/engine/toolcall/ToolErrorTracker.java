@@ -12,6 +12,7 @@ import java.util.List;
  * - 追踪工具调用错误
  * - 检测重复错误
  * - 提供错误统计和警告
+ * - 在连续失败超过阈值时标记应终止循环
  */
 @Slf4j
 public class ToolErrorTracker {
@@ -20,6 +21,9 @@ public class ToolErrorTracker {
 
     // 用于跟踪连续的工具调用错误
     private final List<String> recentToolErrors = new ArrayList<>();
+    
+    // 标记是否应终止循环（因为连续重复错误）
+    private boolean shouldTerminate = false;
 
     /**
      * 记录工具错误
@@ -31,6 +35,12 @@ public class ToolErrorTracker {
         if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
             recentToolErrors.remove(0);
         }
+        
+        // 检查是否达到终止条件
+        if (isRepeatedError(toolSignature)) {
+            shouldTerminate = true;
+            log.error("检测到连续 {} 次相同的工具调用错误: {}，标记应终止循环", MAX_REPEATED_ERRORS, toolSignature);
+        }
     }
 
     /**
@@ -38,6 +48,16 @@ public class ToolErrorTracker {
      */
     public void clearErrors() {
         recentToolErrors.clear();
+        shouldTerminate = false;
+    }
+    
+    /**
+     * 检查是否应终止循环
+     * 
+     * @return true 表示应终止循环
+     */
+    public boolean shouldTerminateLoop() {
+        return shouldTerminate;
     }
 
     /**

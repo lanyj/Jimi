@@ -575,18 +575,29 @@ public class AgentExecutor {
             if (chunk.getFunctionName() != null) {
                 acc.currentFunctionName = chunk.getFunctionName();
             }
-        } else {
-            // 这是一个全新的工具调用
-            if (acc.currentToolCallId != null) {
-                // 保存前一个工具调用
-                acc.toolCalls.add(buildToolCall(acc));
-            }
-
-            // 初始化新的工具调用
-            acc.currentToolCallId = newToolCallId;
-            acc.currentFunctionName = chunk.getFunctionName();
-            acc.currentArguments = new StringBuilder();
+            return;
         }
+        
+        // 检查是否是同一个工具调用的后续 chunk（相同 id）
+        if (newToolCallId.equals(acc.currentToolCallId)) {
+            // 相同 id，只更新 functionName（如果有新值）
+            if (chunk.getFunctionName() != null && acc.currentFunctionName == null) {
+                acc.currentFunctionName = chunk.getFunctionName();
+            }
+            // 不重置 arguments，继续累积
+            return;
+        }
+        
+        // 这是一个全新的工具调用
+        if (acc.currentToolCallId != null) {
+            // 保存前一个工具调用
+            acc.toolCalls.add(buildToolCall(acc));
+        }
+
+        // 初始化新的工具调用
+        acc.currentToolCallId = newToolCallId;
+        acc.currentFunctionName = chunk.getFunctionName();
+        acc.currentArguments = new StringBuilder();
     }
 
     /**
@@ -738,7 +749,14 @@ public class AgentExecutor {
         log.info("准备执行 {} 个工具调用", toolCalls.size());
 
         return executeToolCalls(toolCalls)
-                .then(Mono.just(false)); // 继续循环
+                .then(Mono.defer(() -> {
+                    // 检查是否因为连续重复错误而应终止循环
+                    if (toolErrorTracker.shouldTerminateLoop()) {
+                        log.warn("检测到工具调用连续重复错误，强制终止当前 Agent 循环");
+                        return Mono.just(true);  // 终止循环
+                    }
+                    return Mono.just(false);  // 继续循环
+                }));
     }
 
     /**
