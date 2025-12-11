@@ -54,11 +54,13 @@ public class HelpCommandHandler implements CommandHandler {
         out.println("  /plan           - 查看任务计划 (detail|history)");
         out.println("  /init           - 分析代码库并生成 AGENTS.md");
         out.println("  /graph, /g      - 代码图管理 (build|stats|clear)");
+        out.println("  /async, /bg     - 异步子代理管理 (list|status|cancel|history)");
         out.println("  /clear, /cls    - 清屏");
         out.println("  /history        - 显示命令历史");
         out.println("  /reset          - 清除上下文历史");
         out.println("  /compact        - 压缩上下文");
         out.println("  /agents         - [agent-name | run <agent-name>]");
+        out.println("  /theme          - 切换UI主题 (default|dark|light|minimal|matrix)");
         out.println();
         
         out.printSuccess("Shell 快捷方式:");

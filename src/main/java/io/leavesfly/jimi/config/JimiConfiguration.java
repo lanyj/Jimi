@@ -85,4 +85,14 @@ public class JimiConfiguration {
     public GraphManager graphManager(GraphConfig graphConfig) {
         return new GraphManager(graphConfig);
     }
+
+    /**
+     * ShellUIConfig Bean - Shell UI 配置
+     * 从 application.yml 中加载 jimi.shell-ui 配置
+     */
+    @Bean
+    @ConfigurationProperties(prefix = "jimi.shell-ui")
+    public ShellUIConfig shellUIConfig() {
+        return new ShellUIConfig();
+    }
 }

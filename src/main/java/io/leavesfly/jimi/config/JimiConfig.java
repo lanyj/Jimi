@@ -78,6 +78,14 @@ public class JimiConfig {
     @Builder.Default
     private GraphConfig graph = new GraphConfig();
 
+    /**
+     * Shell UI 配置
+     */
+    @JsonProperty("shell_ui")
+    @Valid
+    @Builder.Default
+    private ShellUIConfig shellUI = new ShellUIConfig();
+
     
     /**
      * 验证配置的一致性

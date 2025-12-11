@@ -124,3 +124,39 @@ jimi:
     max-code-length: 10000
     # 是否记录执行详情
     log-execution-details: true
+
+  # Shell UI 配置
+  shell-ui:
+    # 是否显示进度指示器（旋转动画）
+    show-spinner: true
+    # 是否显示 Token 消耗统计
+    show-token-usage: false
+    # 工具调用显示模式 (full/compact/minimal)
+    tool-display-mode: minimal
+    # 工具参数截断长度（紧凑模式下）
+    tool-args-truncate-length: 100
+    # 旋转动画类型 (dots/arrows/circles)
+    spinner-type: dots
+    # 旋转动画更新间隔（毫秒）
+    spinner-interval-ms: 100
+    # 提示符显示样式 (simple/normal/rich)
+    # simple: 简洁模式，只有图标和名称
+    # normal: 标准模式，显示图标、名称和状态
+    # rich: 丰富模式，显示图标、名称、状态、消息数和Token数
+    prompt-style: normal
+    # 是否在提示符中显示时间
+    show-time-in-prompt: false
+    # 是否在提示符中显示上下文统计（消息数/Token数）
+    show-context-stats: false
+    # 是否显示快捷操作提示
+    show-shortcuts-hint: true
+    # 快捷提示显示频率 (always/first_time/periodic)
+    shortcuts-hint-frequency: first_time
+    # 定期显示的间隔（交互次数）
+    shortcuts-hint-interval: 10
+    # 主题配置
+    theme-name: default
+    # 是否启用桌面通知（异步任务完成/触发时）
+    enable-desktop-notification: true
+    # 是否启用终端提示音
+    enable-notification-sound: true

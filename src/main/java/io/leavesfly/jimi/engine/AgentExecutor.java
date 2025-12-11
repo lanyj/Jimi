@@ -478,6 +478,9 @@ public class AgentExecutor {
             updateTokens = context.updateTokenCount(newTotalTokens);
             log.debug("Updated token count: {} + {} = {}", 
                     context.getTokenCount(), acc.usage.getTotalTokens(), newTotalTokens);
+            
+            // 发送Token使用统计消息到Wire（供UI显示）
+            wire.send(new TokenUsageMessage(acc.usage));
         } else {
             // LLM未返回usage信息，使用字符数估算(字符数/4)
             int estimatedTokens = estimateTokensFromMessage(assistantMessage);

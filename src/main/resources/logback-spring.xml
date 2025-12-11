@@ -3,8 +3,11 @@
     <property name="LOG_FILE" value="${user.home}/.jimi/logs/jimi.log"/>
     <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"/>
 
-    <!-- 控制台输出 -->
+    <!-- 控制台输出 - 只显示 WARN 和 ERROR -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>
         </encoder>
@@ -27,8 +30,15 @@
         <appender-ref ref="FILE"/>
     </root>
 
-    <!-- Jimi Logger -->
+    <!-- Jimi Logger - 文件记录 DEBUG，控制台只显示 WARN -->
     <logger name="io.leavesfly.jimi" level="DEBUG" additivity="false">
         <appender-ref ref="FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    
+    <!-- ShellUI专用日志 - 文件记录 DEBUG，控制台只显示 WARN -->
+    <logger name="io.leavesfly.jimi.ui.shell.ShellUI" level="DEBUG" additivity="false">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="CONSOLE"/>
     </logger>
 </configuration>

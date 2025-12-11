@@ -1,5 +1,7 @@
 package io.leavesfly.jimi.ui.shell.output;
 
+import io.leavesfly.jimi.config.ThemeConfig;
+import io.leavesfly.jimi.ui.shell.ColorMapper;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
@@ -12,9 +14,23 @@ import org.jline.utils.InfoCmp;
 public class OutputFormatter {
     
     private final Terminal terminal;
+    private ThemeConfig theme;
     
     public OutputFormatter(Terminal terminal) {
         this.terminal = terminal;
+        this.theme = ThemeConfig.defaultTheme();
+    }
+    
+    public OutputFormatter(Terminal terminal, ThemeConfig theme) {
+        this.terminal = terminal;
+        this.theme = theme != null ? theme : ThemeConfig.defaultTheme();
+    }
+    
+    /**
+     * 设置主题
+     */
+    public void setTheme(ThemeConfig theme) {
+        this.theme = theme != null ? theme : ThemeConfig.defaultTheme();
     }
     
     /**
@@ -34,46 +50,46 @@ public class OutputFormatter {
     }
     
     /**
-     * 打印成功信息（绿色）
+     * 打印成功信息
      */
     public void printSuccess(String text) {
-        AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN);
+        AttributedStyle style = ColorMapper.createStyle(theme.getSuccessColor());
         terminal.writer().println(new AttributedString("✓ " + text, style).toAnsi());
         terminal.flush();
     }
     
     /**
-     * 打印状态信息（黄色）
+     * 打印状态信息
      */
     public void printStatus(String text) {
-        AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW);
+        AttributedStyle style = ColorMapper.createStyle(theme.getStatusColor());
         terminal.writer().println(new AttributedString("ℹ " + text, style).toAnsi());
         terminal.flush();
     }
     
     /**
-     * 打印错误信息（红色）
+     * 打印错误信息
      */
     public void printError(String text) {
-        AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.RED);
+        AttributedStyle style = ColorMapper.createStyle(theme.getErrorColor());
         terminal.writer().println(new AttributedString("✗ " + text, style).toAnsi());
         terminal.flush();
     }
     
     /**
-     * 打印信息（蓝色）
+     * 打印信息
      */
     public void printInfo(String text) {
-        AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE);
+        AttributedStyle style = ColorMapper.createStyle(theme.getInfoColor());
         terminal.writer().println(new AttributedString("→ " + text, style).toAnsi());
         terminal.flush();
     }
     
     /**
-     * 打印警告信息（黄色，带警告图标）
+     * 打印警告信息
      */
     public void printWarning(String text) {
-        AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW);
+        AttributedStyle style = ColorMapper.createStyle(theme.getStatusColor());
         terminal.writer().println(new AttributedString("⚠ " + text, style).toAnsi());
         terminal.flush();
     }
